@@ -1,45 +1,48 @@
 #!/usr/local/bin/env python3.6
 import yaml
 import time
-import asyncio
-from multi_server import MultiServer
-from threading import Thread
 import socket
-import evolver_server
+from evolver_server import evolverServer, serialPort
 import os
+from threading import Thread
 
 conf = {}
 CONF_FILENAME = 'conf.yml'
 
-def start_background_loop(loop):
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
+with open(CONF_FILENAME, 'r') as ymlfile:
+    conf = yaml.load(ymlfile)
+
+es = evolverServer(conf)
+es.sub_command([{"param":"stir", "value":['8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8'], "type":"immediate_command_char"}], conf)
+
+s=serialPort(conf)
+s.run()
+
+
+
+
+
 
 if __name__ == '__main__':
-    # need to get our IP
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    evolver_ip = s.getsockname()[0]
-    s.close()
+    
     with open(os.path.realpath(os.path.join(os.getcwd(),os.path.dirname(__file__), CONF_FILENAME)), 'r') as ymlfile:
         conf = yaml.load(ymlfile)
-
-    conf['evolver_ip'] = evolver_ip
+    
+    # need to get IP
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    conf['evolver_ip'] = s.connect(("8.8.8.8", 80)).getsockname()[0]
+    s.close()
 
     # Set up the server
-    server_loop = asyncio.new_event_loop()
-    ms = MultiServer(loop=server_loop)
-    app1 = ms.add_app(port = conf['port'])
-    evolver_server.attach(app1, conf)
-    ms.run_all()
+    eServer = evolverServer(conf)
+
 
     # Set up data broadcasting
-    bloop = asyncio.new_event_loop()
     last_time = None
     running = False
     while True:
         current_time = time.time()
-        commands_in_queue = evolver_server.get_num_commands() > 0
+        commands_in_queue = eServer.get_num_commands() > 0
 
         if (last_time is None or current_time - last_time > conf['broadcast_timing'] or commands_in_queue) and not running:
             if last_time is None or current_time - last_time > conf['broadcast_timing']:
