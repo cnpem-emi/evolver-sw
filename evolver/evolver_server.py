@@ -1,10 +1,11 @@
 import serial
-import evolver
 import time
 import json
+import logging
 import sys
 import os
 import yaml
+import redis
 import threading
 from traceback import print_exc
 from queue import Queue
@@ -16,8 +17,24 @@ READING = 'reading_command_char'
 CALIBRATIONS_FILENAME = "calibrations.json"
 
 
-serialQueue = Queue()
-redisQueue = Queue()
+# ---- QUEUES
+serialQueue = Queue()  # Items in queue: {"payload": bytes, "reply": boolean}
+redisQueue = Queue()   #                  payload: bytes to be sent // reply: wait for a reply?
+broadcastQueue = Queue()
+
+# ---- REDIS CLIENT
+REDIS_INCOMING_QUEUE = "incoming_queue"
+REDIS_OUTCOMING_QUEUE = "incoming_queue"
+
+
+# ---- LOGGING
+logging.basicConfig(level=logging.INFO, format='%(asctime)-15s [%(levelname)s] %(message)s',
+    datefmt='%d/%m/%Y %H:%M:%S')
+logger = logging.getLogger()
+
+
+
+
 
 class EvolverSerialError(Exception):
     pass
@@ -371,14 +388,62 @@ class serialPort:
                 if(request["reply"]):
                     reply = self.read()
                     serialQueue.put(reply)
+                    broadcastQueue.put(reply)
                 
             elif redisQueue.qsize:
-                self.write(redisQueue.get())
-                time.sleep(self.sleepTime)
-                serialQueue.put(redisQueue.read())
+                request = redisQueue.get()
+                self.write(request["payload"])
+                if(request["reply"]):
+                    reply = self.read()
+                    redisQueue.put(reply)
+                    broadcastQueue.put(reply)
 
             time.sleep(self.sleepTime)
 
     def run(self):
         _t1 = threading.Thread(target=self.serialThread)
         _t1.start()
+
+
+
+class redisClient:
+    def __init__(self, config: dict):
+        self.redis_client = redis.Redis(config["redis_server_ip"], config["redis_server_port"], config["redis_server_passwd"]) 
+
+    def queueRedisThread(self):
+        while(True):
+            try:
+                while(True):
+                    # wait until there is a command in the list
+                    # command = {"payload": bytes, "reply": boolean}
+                    command = json.loads(self.redis_client.brpop(REDIS_INCOMING_QUEUE)[1])
+                    redisQueue.put(command)
+                    self.redis_client.lpush(redisQueue.get(block=True))
+            except:
+                logger.exception('Error in redis queue thread !')
+
+
+    def broadcastRedisThread(self):
+        while(True):
+            try:
+                while(True):
+                    # wait until there is a command in the list
+                    _info = broadcastQueue.get(block=True).decode('UTF-8', errors='ignore')
+                    print(_info)
+                    _param = _info.split(",")[0]
+                    _data = _info.split(",")[1:17]
+                  
+                    print(_param[-1])
+                    if 'i' in _param[-1]:
+                        for _ss in range(16):
+                            self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
+
+            except:
+                logger.exception('Error in redis broadcast thread !')
+
+
+    def run(self):
+        _t1 = threading.Thread(target=self.queueRedisThread)
+        _t2 = threading.Thread(target=self.broadcastRedisThread)
+        _t1.start()
+        _t2.start()
