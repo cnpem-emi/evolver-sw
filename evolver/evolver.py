@@ -2,7 +2,7 @@
 import yaml
 import time
 import socket
-from evolver_server import evolverServer, serialPort
+from evolver_server import evolverServer, serialPort, redisClient
 import os
 from threading import Thread
 
@@ -13,12 +13,13 @@ with open(CONF_FILENAME, 'r') as ymlfile:
     conf = yaml.load(ymlfile)
 
 es = evolverServer(conf)
-es.sub_command([{"param":"stir", "value":['8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8'], "type":"immediate_command_char"}], conf)
+es.sub_command([{"param":"stir", "value":['8']*16, "type":"immediate_command_char"}], conf)
 
 s=serialPort(conf)
 s.run()
 
-
+redis = redisClient(conf)
+redis.run()
 
 
 
@@ -38,18 +39,20 @@ if __name__ == '__main__':
 
 
     # Set up data broadcasting
-    last_time = None
-    running = False
+    last_time = time.time()
+
     while True:
         current_time = time.time()
-        commands_in_queue = eServer.get_num_commands() > 0
+        commands_in_queue = eServer.get_num_commands() == 0
 
-        if (last_time is None or current_time - last_time > conf['broadcast_timing'] or commands_in_queue) and not running:
-            if last_time is None or current_time - last_time > conf['broadcast_timing']:
+        if (current_time - last_time > conf['broadcast_timing'] or commands_in_queue):
+            if current_time - last_time > conf['broadcast_timing']:
                 last_time = current_time
             try:
-                running = True
-                bloop.run_until_complete(evolver_server.broadcast(commands_in_queue))
-                running = False
+                for param in conf['experimental_params'].keys():
+                    es.sub_command([{"param": param, "value":['-']*16, "type": "reading_command_char"}], conf)
+                
+                replies = es.run_commands()
+
             except:
                 pass
