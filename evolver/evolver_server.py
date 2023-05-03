@@ -417,6 +417,7 @@ class serialPort:
 
 
 class redisClient:
+
     def __init__(self, config: dict):
         self.redis_client = redis.Redis(config["redis_server_ip"], config["redis_server_port"], config["redis_server_passwd"]) 
 
@@ -457,3 +458,46 @@ class redisClient:
         _t2 = Thread(target=self.broadcastRedisThread)
         _t1.start()
         _t2.start()
+
+
+
+
+class socketTCP:
+    def __init__(self, port: int):
+
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(server_address)
+            sock.listen(1)
+
+            while True:
+                connection, client_address = sock.accept()
+                try:
+                    logger.info('Client connected {} '.format(client_address))
+                    while True:
+                        msg = connection.recv(1024)
+                        if msg:
+                            commands = msg.split(b'\r\n')
+                            for data in commands:
+                                if data:
+                                    #==============================================================
+                                    # set GPIO pin direction
+                                    if (data[0] == "\x01"):
+                                        logger.info('Command received: set GPIO direction')
+                                        queue_general.put([data[0], "dummy_address", data[2], data[3], data[4]])
+                                    #elif (data[0] == "\x12"):
+                                    #pass
+                                    #==============================================================
+
+                        else:
+                            break
+                except:
+                    #logger.exception('Connection Error !')
+                    logger.exception('Error in thread 1! (writing to list')
+                finally:
+                    logger.info('Closing connection {}'.format(client_address))
+                    connection.close()
+        finally:
+            sock.close()
+    
