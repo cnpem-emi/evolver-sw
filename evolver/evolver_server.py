@@ -6,7 +6,7 @@ import sys
 import os
 import yaml
 import redis
-import threading
+from threading import Event, Thread
 from traceback import print_exc
 from queue import Queue
 
@@ -287,14 +287,14 @@ class evolverServer:
 
         # Construct the actual string and write out on the serial buffer
         serial_output = param + ','.join(output) + ',' + self.evolver_conf['serial_end_outgoing']
-        print(serial_output)
-        serialQueue.put({"payload": bytes(serial_output, 'UTF-8'), "reply": True})
-        #self.serial_connection.write(bytes(serial_output, 'UTF-8'))
-        print("DELAY {} s".format(self.evolver_conf['serial_delay']))
-        time.sleep(self.evolver_conf['serial_delay'])
+        serialEvent = Event()
+        print(serial_output, serialEvent)
+
+        serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, 'UTF-8'), "reply": True})
+        serialEvent.wait()
 
         # Read and process the response
-        response = serialQueue.get(block=True).decode('UTF-8', errors='ignore').replace(",_!", "end").replace("stiri", "stirb")
+        response = serialQueue.get(block=True).decode('UTF-8', errors='ignore') #.replace(",_!", "end").replace("stiri", "stirb")
         #response = self.serial_connection.readline().decode('UTF-8', errors='ignore')
         print(response, flush = True)
         address = response[0:len(param)]
@@ -307,7 +307,7 @@ class evolverServer:
         returned_data = response[len(param):len(response) - len(self.evolver_conf['serial_end_incoming']) - 1].split(',')
 
         if len(returned_data) != fields_expected_incoming:
-            raise EvolverSerialError('Error: Number of fields recieved for ' + param + ' different from expected\n\tExpected: ' + str(fields_expected_incoming) + '\n\tFound: ' + str(len(returned_data)))
+            raise EvolverSerialError('Error: Number of fields received for ' + param + ' different from expected\n\tExpected: ' + str(fields_expected_incoming) + '\n\tFound: ' + str(len(returned_data)))
 
         if returned_data[0] == self.evolver_conf['echo_response_char'] and \
             output[1:] != returned_data[1:]:
@@ -321,6 +321,7 @@ class evolverServer:
         serial_output[0] = self.evolver_conf['acknowledge_char']
         serial_output = param + ','.join(serial_output) + ',' + self.evolver_conf['serial_end_outgoing']
         print(serial_output, flush = True)
+
         serialQueue.put({"payload": bytes(serial_output, 'UTF-8'), "reply": False})
 
         # This is necessary to allow the ack to be fully written out to samd21 and for them to fully read
@@ -382,26 +383,35 @@ class serialPort:
     
     def serialThread(self):
         while True:
+            request_source = ""
+
             if serialQueue.qsize:
                 request = serialQueue.get()
-                self.write(request["payload"])
-                if(request["reply"]):
-                    reply = self.read()
-                    serialQueue.put(reply)
-                    broadcastQueue.put(reply)
+                request_source = 'serial'
                 
             elif redisQueue.qsize:
                 request = redisQueue.get()
+                request_source = 'redis'
+
+            if request_source:
                 self.write(request["payload"])
                 if(request["reply"]):
                     reply = self.read()
-                    redisQueue.put(reply)
+                    if reply.count(b'end') > 1:
+                        reply = reply.split(b'end')[-2]+b'end'
+
+                    if request_source == 'serial':
+                        serialQueue.put(reply)
+                    elif request_source == 'redis':
+                        redisQueue.put(reply)
                     broadcastQueue.put(reply)
+                    if "event" in request.keys():
+                        request["event"].set()
 
             time.sleep(self.sleepTime)
 
     def run(self):
-        _t1 = threading.Thread(target=self.serialThread)
+        _t1 = Thread(target=self.serialThread)
         _t1.start()
 
 
@@ -443,7 +453,7 @@ class redisClient:
 
 
     def run(self):
-        _t1 = threading.Thread(target=self.queueRedisThread)
-        _t2 = threading.Thread(target=self.broadcastRedisThread)
+        _t1 = Thread(target=self.queueRedisThread)
+        _t2 = Thread(target=self.broadcastRedisThread)
         _t1.start()
         _t2.start()

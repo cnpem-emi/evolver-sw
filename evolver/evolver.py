@@ -10,17 +10,13 @@ conf = {}
 CONF_FILENAME = 'conf.yml'
 
 with open(CONF_FILENAME, 'r') as ymlfile:
-    conf = yaml.load(ymlfile)
+    conf = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
-es = evolverServer(conf)
+es = evolverServer(conf); s=serialPort(conf); s.run(); redis = redisClient(conf); redis.run()
+
+
 es.sub_command([{"param":"stir", "value":['8']*16, "type":"immediate_command_char"}], conf)
-
-s=serialPort(conf)
-s.run()
-
-redis = redisClient(conf)
-redis.run()
-
+es.run_commands()
 
 
 
