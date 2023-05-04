@@ -21,7 +21,7 @@ with open(CONF_FILENAME, 'r') as ymlfile:
 # ==============================================================
 # Server and TCP port
 eServer = None
-socketPort = 6000
+socketPort = 6001
 
 
 # ==============================================================
@@ -31,7 +31,7 @@ lock = Lock()
 
 
 
-def socketServer(port):
+def socketServer():
     '''
         
     '''
@@ -39,7 +39,7 @@ def socketServer(port):
         try:
             _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             _sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            _sock.bind(("", port))
+            _sock.bind(("", socketPort))
             _sock.listen(1)
 
             while True:
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     redis = redisClient(conf)
     redis.run()
 
-    sServer = Thread(target=socketServer, args=(socketPort))
+    sServer = Thread(target=socketServer)
     sServer.start()
 
 
@@ -181,15 +181,17 @@ if __name__ == '__main__':
     while True:
         current_time = time.time()
         no_commands_in_queue = eServer.get_num_commands() == 0
-
+#        '''
         if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue):
             if current_time - last_time > conf['broadcast_timing']:
                 last_time = current_time
             try:
                 with lock:
                     for param in conf['experimental_params'].keys():
-                        eServer.sub_command([{"param": param, "value":['-']*16, "type": "reading_command_char"}], conf)
+                        if conf['experimental_params'][param]['recurring']:
+                            eServer.sub_command([{"param": param, "value":conf['experimental_params'][param]['value'], "type": "reading_command_char"}], conf)
                     replies = eServer.run_commands()
-
             except:
                 pass
+#        '''
+        time.sleep(5)

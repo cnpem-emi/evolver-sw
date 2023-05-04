@@ -2,17 +2,17 @@
 # eVOLVER experimental parameter configurations
 experimental_params:
   od_90:
-    recurring: true
-    fields_expected_outgoing: 17
+    recurring: false
+    fields_expected_outgoing: 2
     fields_expected_incoming: 17
     value: '1000'
   od_135:
     recurring: true
-    fields_expected_outgoing: 17
+    fields_expected_outgoing: 2
     fields_expected_incoming: 17
     value: '1000'
   od_led:
-    recurring: true
+    recurring: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
     value: ['4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095']
@@ -22,7 +22,7 @@ experimental_params:
     fields_expected_incoming: 17
     value: ['4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095']
   stir:
-    recurring: true
+    recurring: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
     value: ['8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8']
@@ -54,7 +54,7 @@ temp_calibration_directory: temp
 # Serial communication
 serial_end_outgoing: "_!"
 serial_end_incoming: end
-serial_port: '/dev/ttyS0'
+serial_port: '/dev/ttyUSB0'
 serial_baudrate: 9600
 serial_timeout: 1
 serial_delay: .1

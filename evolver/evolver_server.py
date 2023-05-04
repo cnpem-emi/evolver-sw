@@ -13,7 +13,7 @@ from queue import Queue
 LOCATION = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 IMMEDIATE = 'immediate_command_char'
 RECURRING = 'recurring_command_char'
-READING = 'reading_command_char'
+READ_ONLY = 'reading_command_char'
 CALIBRATIONS_FILENAME = "calibrations.json"
 
 
@@ -61,6 +61,7 @@ class evolverServer:
         value = data.get('value', None)
         immediate = data.get('immediate', None)
         recurring = data.get('recurring', None)
+        readonly = data.get('readonly', None)
         fields_expected_outgoing = data.get('fields_expected_outgoing', None)
         fields_expected_incoming = data.get('fields_expected_incoming', None)
 
@@ -81,11 +82,14 @@ class evolverServer:
 
 
         # Save to config the values sent in for the parameter
-        with open(os.path.realpath(os.path.join(os.getcwd(),os.path.dirname(__file__), evolver.CONF_FILENAME)), 'w') as ymlfile:
-            yaml.dump(self.evolver_conf, ymlfile)
+#        with open(os.path.realpath(os.path.join(os.getcwd(),os.path.dirname(__file__), evolver.CONF_FILENAME)), 'w') as ymlfile:
+#            yaml.dump(self.evolver_conf, ymlfile)
 
         if immediate:
             self.command_queue.put({'param': param, 'value': value, 'type': IMMEDIATE})
+        elif readonly:
+            self.command_queue.put({'param': param, 'value': value, 'type': READ_ONLY})
+
         return(data)
 
 
@@ -310,8 +314,8 @@ class evolverServer:
             output.append(self.evolver_conf[RECURRING])
         elif comm_type == IMMEDIATE:
             output.append(self.evolver_conf[IMMEDIATE])
-        elif comm_type == READING:
-            output.append(self.evolver_conf[READING])
+        elif comm_type == READ_ONLY:
+            output.append(self.evolver_conf[READ_ONLY])
 
         if type(value) is list:
             output = output + list(map(str,value))
@@ -407,9 +411,10 @@ class evolverServer:
         for command in command_list:
             parameter = command['param']
             value = command['value']
+            type = command['type']
             if value == 'values':
                 value = parameters[parameter]['value']
-            self.command_queue.put({'param': parameter, 'value': value, 'type': IMMEDIATE})
+            self.command_queue.put({'param': parameter, 'value': value, 'type': type})
 
 
     
@@ -449,7 +454,9 @@ class serialPort:
             if request_source:
                 self.write(request["payload"])
                 if(request["reply"]):
+#                    time.sleep(2)
                     reply = self.read()
+                    print(reply)
                     if reply.count(b'end') > 1:
                         reply = reply.split(b'end')[-2]+b'end'
 
@@ -505,7 +512,6 @@ class redisClient:
                     _param = _info.split(",")[0]
                     _data = _info.split(",")[1:17]
                   
-                    print(_param[-1])
                     if 'i' in _param[-1]:
                         for _ss in range(16):
                             self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
