@@ -44,12 +44,18 @@ class EvolverSerialError(Exception):
 class evolverServer:
     
     def __init__(self, config: dict):
+        '''
+
+        '''
         self.command_queue = Queue()
         self.evolver_conf = config
         self.serial_connection = serial.Serial(port=self.evolver_conf['serial_port'], baudrate = self.evolver_conf['serial_baudrate'], timeout = self.evolver_conf['serial_timeout'])
 
 
     def command(self, data: dict) -> dict:
+        '''
+        
+        '''
         print('Received COMMAND', flush = True)
         param = data.get('param', None)
         value = data.get('value', None)
@@ -84,10 +90,16 @@ class evolverServer:
 
 
     def getlastcommands(self) -> dict:
+        '''
+        
+        '''
         return(self.evolver_conf)
 
 
     def getcalibrationnames(self) -> list:
+        '''
+        
+        '''
         calibration_names = []
         print("Retrieving cal names...", flush = True)
         try:
@@ -102,6 +114,9 @@ class evolverServer:
 
 
     def getfitnames(self) -> list:
+        '''
+        
+        '''
         fit_names = []
         print("Retrieving fit names...", flush = True)
         try:
@@ -117,6 +132,9 @@ class evolverServer:
         
 
     def getcalibration(self, data: dict) -> dict:
+        '''
+        
+        '''
         try:
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
                 calibrations = json.load(f)
@@ -129,6 +147,9 @@ class evolverServer:
 
 
     def setrawcalibration(self, data: dict) -> str:
+        '''
+        
+        '''
         try:
             calibrations = []
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
@@ -183,6 +204,9 @@ class evolverServer:
 
 
     def setactiveodcal(self, data: dict) -> list:
+        '''
+        
+        '''
         try:
             active_calibrations = []
             print("Time to set active cals. Data received: ")
@@ -208,6 +232,9 @@ class evolverServer:
 
 
     def getactivecal(self) -> list:
+        '''
+        
+        '''
         try:
             active_calibrations = []
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
@@ -223,6 +250,9 @@ class evolverServer:
 
 
     def getdevicename(self) -> dict:
+        '''
+        
+        '''
         self.config_path = os.path.join(LOCATION)
         with open(os.path.join(LOCATION, self.evolver_conf['device'])) as f:
             configJSON = json.load(f)
@@ -230,6 +260,9 @@ class evolverServer:
 
 
     def setdevicename(self, data: dict) -> dict:
+        '''
+        
+        '''
         self.config_path = os.path.join(LOCATION)
         print('saving device name', flush = True)
         if not os.path.isdir(self.config_path):
@@ -240,10 +273,16 @@ class evolverServer:
 
 
     def print_calibration_file_error(self):
+        '''
+        
+        '''
         print("Error reading calibrations file.", flush = True)
 
 
     def run_commands(self) -> dict:
+        '''
+        
+        '''
         data = {}
         while self.command_queue.qsize() > 0:
             command = self.command_queue.get()
@@ -260,6 +299,9 @@ class evolverServer:
 
 
     def serial_communication(self, param: str, value: list, comm_type: str) -> list:
+        '''
+        
+        '''
 
         output = []
 
@@ -288,14 +330,14 @@ class evolverServer:
         # Construct the actual string and write out on the serial buffer
         serial_output = param + ','.join(output) + ',' + self.evolver_conf['serial_end_outgoing']
         serialEvent = Event()
-        print(serial_output, serialEvent)
+        print(serial_output)
 
         serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, 'UTF-8'), "reply": True})
         serialEvent.wait()
 
         # Read and process the response
-        response = serialQueue.get(block=True).decode('UTF-8', errors='ignore') #.replace(",_!", "end").replace("stiri", "stirb")
-        #response = self.serial_connection.readline().decode('UTF-8', errors='ignore')
+        response = serialQueue.get(block=True).decode('UTF-8', errors='ignore')
+
         print(response, flush = True)
         address = response[0:len(param)]
         if address != param:
@@ -320,7 +362,6 @@ class evolverServer:
         serial_output = [''] * fields_expected_outgoing
         serial_output[0] = self.evolver_conf['acknowledge_char']
         serial_output = param + ','.join(serial_output) + ',' + self.evolver_conf['serial_end_outgoing']
-        print(serial_output, flush = True)
 
         serialQueue.put({"payload": bytes(serial_output, 'UTF-8'), "reply": False})
 
@@ -336,6 +377,9 @@ class evolverServer:
 
 
     def get_num_commands(self) -> int:
+        '''
+        
+        '''
         return self.command_queue.qsize()
 
 
@@ -376,12 +420,21 @@ class serialPort:
         self.sleepTime = config['serial_delay']
 
     def write(self, payload: bytes):
+        '''
+        
+        '''
         self.serial_connection.write(payload)
 
     def read(self) -> bytes:
+        '''
+        
+        '''
         return(self.serial_connection.readline())
     
     def serialThread(self):
+        '''
+        
+        '''
         while True:
             request_source = ""
 
@@ -411,6 +464,9 @@ class serialPort:
             time.sleep(self.sleepTime)
 
     def run(self):
+        '''
+        
+        '''
         _t1 = Thread(target=self.serialThread)
         _t1.start()
 
@@ -422,6 +478,9 @@ class redisClient:
         self.redis_client = redis.Redis(config["redis_server_ip"], config["redis_server_port"], config["redis_server_passwd"]) 
 
     def queueRedisThread(self):
+        '''
+        
+        '''
         while(True):
             try:
                 while(True):
@@ -435,12 +494,14 @@ class redisClient:
 
 
     def broadcastRedisThread(self):
+        '''
+        
+        '''
         while(True):
             try:
                 while(True):
                     # wait until there is a command in the list
                     _info = broadcastQueue.get(block=True).decode('UTF-8', errors='ignore')
-                    print(_info)
                     _param = _info.split(",")[0]
                     _data = _info.split(",")[1:17]
                   
@@ -454,50 +515,10 @@ class redisClient:
 
 
     def run(self):
+        '''
+        
+        '''
         _t1 = Thread(target=self.queueRedisThread)
         _t2 = Thread(target=self.broadcastRedisThread)
         _t1.start()
         _t2.start()
-
-
-
-
-class socketTCP:
-    def __init__(self, port: int):
-
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(server_address)
-            sock.listen(1)
-
-            while True:
-                connection, client_address = sock.accept()
-                try:
-                    logger.info('Client connected {} '.format(client_address))
-                    while True:
-                        msg = connection.recv(1024)
-                        if msg:
-                            commands = msg.split(b'\r\n')
-                            for data in commands:
-                                if data:
-                                    #==============================================================
-                                    # set GPIO pin direction
-                                    if (data[0] == "\x01"):
-                                        logger.info('Command received: set GPIO direction')
-                                        queue_general.put([data[0], "dummy_address", data[2], data[3], data[4]])
-                                    #elif (data[0] == "\x12"):
-                                    #pass
-                                    #==============================================================
-
-                        else:
-                            break
-                except:
-                    #logger.exception('Connection Error !')
-                    logger.exception('Error in thread 1! (writing to list')
-                finally:
-                    logger.info('Closing connection {}'.format(client_address))
-                    connection.close()
-        finally:
-            sock.close()
-    
