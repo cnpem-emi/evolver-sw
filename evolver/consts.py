@@ -1,5 +1,5 @@
 
-commands = {
+functions = {
 "command":              {"id": 1}, 
 "getlastcommands":      {"id": 2}, 
 "getcalibrationnames":  {"id": 3}, 

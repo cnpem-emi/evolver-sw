@@ -156,9 +156,7 @@ def socketServer(port):
 
 
 if __name__ == '__main__':
-    
-    with open(os.path.realpath(os.path.join(os.getcwd(),os.path.dirname(__file__), CONF_FILENAME)), 'r') as ymlfile:
-        conf = yaml.load(ymlfile)
+
     
     # need to get IP
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
