@@ -157,10 +157,10 @@ def socketServer(port):
 
 if __name__ == '__main__':
 
-    
     # need to get IP
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    conf['evolver_ip'] = s.connect(("8.8.8.8", 80)).getsockname()[0]
+    s.connect(("8.8.8.8", 80))
+    conf['evolver_ip'] = s.getsockname()[0]
     s.close()
 
     # Set up the server
