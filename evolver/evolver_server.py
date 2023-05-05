@@ -4,8 +4,8 @@ import json
 import logging
 import sys
 import os
-import yaml
 import redis
+import socketio
 from threading import Event, Thread
 from traceback import print_exc
 from queue import Queue
@@ -33,7 +33,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)-15s [%(levelname)s] %
 logger = logging.getLogger()
 
 
-
+global sio
+sio = None
 
 
 class EvolverSerialError(Exception):
@@ -45,16 +46,24 @@ class evolverServer:
     
     def __init__(self, config: dict):
         '''
-
         '''
+        global sio
+        sio = socketio.AsyncServer(async_handlers=True)
         self.command_queue = Queue()
         self.evolver_conf = config
-        self.serial_connection = serial.Serial(port=self.evolver_conf['serial_port'], baudrate = self.evolver_conf['serial_baudrate'], timeout = self.evolver_conf['serial_timeout'])
+
+    @sio.on('connect', namespace = '/dpu-evolver')
+    async def on_connect(sid, environ):
+        print('Connected dpu as server', flush = True)
 
 
-    def command(self, data: dict) -> dict:
+    @sio.on('disconnect', namespace = '/dpu-evolver')
+    async def on_disconnect(sid):
+        print('Disconnected dpu as Server', flush = True)
+
+    @sio.on('command', namespace = '/dpu-evolver')
+    async def on_command(self, sid, data: dict):
         '''
-        
         '''
         print('Received COMMAND', flush = True)
         param = data.get('param', None)
@@ -86,23 +95,26 @@ class evolverServer:
 #            yaml.dump(self.evolver_conf, ymlfile)
 
         if immediate:
+            self.clear_broadcast(param)
             self.command_queue.put({'param': param, 'value': value, 'type': IMMEDIATE})
         elif readonly:
+            self.clear_broadcast(param)
             self.command_queue.put({'param': param, 'value': value, 'type': READ_ONLY})
 
-        return(data)
+        await sio.emit('commandbroadcast', data, namespace = '/dpu-evolver')
 
 
-    def getlastcommands(self) -> dict:
+
+    @sio.on('getconfig', namespace = '/dpu-evolver')
+    async def on_getlastcommands(self, sid, data):
+        await sio.emit('config', self.evolver_conf, namespace='/dpu-evolver')
+
+
+
+
+    @sio.on('getcalibrationnames', namespace = '/dpu-evolver')
+    async def on_getcalibrationnames(self, sid, data):
         '''
-        
-        '''
-        return(self.evolver_conf)
-
-
-    def getcalibrationnames(self) -> list:
-        '''
-        
         '''
         calibration_names = []
         print("Retrieving cal names...", flush = True)
@@ -114,12 +126,13 @@ class evolverServer:
         except FileNotFoundError:
             self.print_calibration_file_error()
 
-        return(calibration_names)
+        await sio.emit("calibrationnames", calibration_names, namespace = '/dpu-evolver')
 
 
-    def getfitnames(self) -> list:
+
+    @sio.on('getfitnames', namespace = '/dpu-evolver')
+    async def on_getfitnames(self, sid, data):
         '''
-        
         '''
         fit_names = []
         print("Retrieving fit names...", flush = True)
@@ -129,30 +142,32 @@ class evolverServer:
                 for calibration in calibrations:
                     for fit in calibration['fits']:
                         fit_names.append({'name': fit['name'], 'calibrationType': calibration['calibrationType']})
-            return(fit_names)
-        
         except FileNotFoundError:
             self.print_calibration_file_error()
         
+        await sio.emit("fitnames", fit_names, namespace = '/dpu-evolver')
 
-    def getcalibration(self, data: dict) -> dict:
+
+
+    @sio.on('getcalibration', namespace = '/dpu-evolver')
+    async def on_getcalibration(self, sid, data):
         '''
-        
         '''
         try:
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
                 calibrations = json.load(f)
                 for calibration in calibrations:
                     if calibration["name"] == data["name"]:
-                        return(calibration)
-                        
+                        await sio.emit('calibration', calibration, namespace = '/dpu-evolver')
+                        break
         except FileNotFoundError:
             self.print_calibration_file_error()
 
 
-    def setrawcalibration(self, data: dict) -> str:
+
+    @sio.on('setrawcalibration', namespace = '/dpu-evolver')
+    async def on_setrawcalibration(self, sid, data):
         '''
-        
         '''
         try:
             calibrations = []
@@ -173,13 +188,14 @@ class evolverServer:
                 calibrations.append(data)
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME), 'w') as f:
                 json.dump(calibrations, f)
-            
-            return('success')
+                await sio.emit('calibrationrawcallback', 'success', namespace = '/dpu-evolver')
         except FileNotFoundError:
             self.print_calibration_file_error()
 
 
-    def setfitcalibrations(self, data: dict):
+
+    @sio.on('setfitcalibration', namespace = '/dpu-evolver')
+    async def on_setfitcalibrations(self, sid, data):
         """
             Set a fit calibration into the calibration file. data should contain a `fit` key/value
             formatted according to the cal schema `fit` object. This function will add the fit into the
@@ -207,9 +223,9 @@ class evolverServer:
             self.print_calibration_file_error()
 
 
-    def setactiveodcal(self, data: dict) -> list:
+    @sio.on('setactivecal', namespace = '/dpu-evolver')
+    async def on_setactiveodcal(self, sid, data):
         '''
-        
         '''
         try:
             active_calibrations = []
@@ -227,17 +243,19 @@ class evolverServer:
                             fit["active"] = False
                     if active:
                         active_calibrations.append(calibration)
+
+            await sio.emit('activecalibrations', active_calibrations, namespace = '/dpu-evolver')
+
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME), 'w') as f:
                 json.dump(calibrations, f)
-
-            return(active_calibrations)
         except FileNotFoundError:
             self.print_calibration_file_error()
 
 
-    def getactivecal(self) -> list:
+
+    @sio.on('getactivecal', namespace = '/dpu-evolver')
+    async def on_getactivecal(self, sid, data):
         '''
-        
         '''
         try:
             active_calibrations = []
@@ -247,25 +265,27 @@ class evolverServer:
                     for fit in calibration['fits']:
                         if fit['active']:
                             active_calibrations.append(calibration)
-                            break;
-            return(active_calibrations)
+                            break
+            await sio.emit('activecalibrations', active_calibrations, namespace = '/dpu-evolver')
         except FileNotFoundError:
             self.print_calibration_file_error()
 
 
-    def getdevicename(self) -> dict:
+
+    @sio.on('getdevicename', namespace = '/dpu-evolver')
+    async def on_getdevicename(self, sid, data):
         '''
-        
         '''
         self.config_path = os.path.join(LOCATION)
         with open(os.path.join(LOCATION, self.evolver_conf['device'])) as f:
             configJSON = json.load(f)
-        return(configJSON)
+        await sio.emit('broadcastname', configJSON, namespace = '/dpu-evolver')
 
 
-    def setdevicename(self, data: dict) -> dict:
+
+    @sio.on('setdevicename', namespace = '/dpu-evolver')
+    async def on_setdevicename(self, sid, data):
         '''
-        
         '''
         self.config_path = os.path.join(LOCATION)
         print('saving device name', flush = True)
@@ -273,19 +293,28 @@ class evolverServer:
             os.mkdir(self.config_path)
         with open(os.path.join(self.config_path, self.evolver_conf['device']), 'w') as f:
             f.write(json.dumps(data))
-        return(data)
+        await sio.emit('broadcastname', data, namespace = '/dpu-evolver')
+
 
 
     def print_calibration_file_error(self):
         '''
-        
         '''
         print("Error reading calibrations file.", flush = True)
 
 
-    def run_commands(self) -> dict:
+
+    def clear_broadcast(self, param=None):
+        """ Removes broadcast commands of a specific param from queue """
+        for command in self.command_queue.queue:
+            if (command['param'] == param or param is None) and command['type'] == RECURRING:
+                self.command_queue.queue.remove(command)
+                break
+
+
+
+    async def run_commands(self) -> dict:
         '''
-        
         '''
         data = {}
         while self.command_queue.qsize() > 0:
@@ -303,8 +332,7 @@ class evolverServer:
 
 
     def serial_communication(self, param: str, value: list, comm_type: str) -> list:
-        '''
-        
+        '''        
         '''
 
         output = []
@@ -378,11 +406,20 @@ class evolverServer:
             returned_data = None
 
         return returned_data
+    
+
+
+    def attach(self, app):
+        """
+            Attach the server to the web application.
+            Initialize server from config
+        """
+        sio.attach(app)
+
 
 
     def get_num_commands(self) -> int:
         '''
-        
         '''
         return self.command_queue.qsize()
 
@@ -417,7 +454,23 @@ class evolverServer:
             self.command_queue.put({'param': parameter, 'value': value, 'type': type})
 
 
-    
+    async def broadcast(self, commands_in_queue):
+        broadcast_data = {}
+        self.clear_broadcast()
+        if not commands_in_queue:
+            self.process_commands(self.evolver_conf['experimental_params'])
+
+        # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
+        broadcast_data['data'] = await self.run_commands()
+        broadcast_data['config'] = self.evolver_conf['experimental_params']
+
+        if not commands_in_queue:
+            print('Broadcasting data', flush = True)
+            broadcast_data['ip'] = self.evolver_conf['evolver_ip']
+            broadcast_data['timestamp'] = time.time()
+            print(broadcast_data, flush = True)
+            await sio.emit('broadcast', broadcast_data, namespace='/dpu-evolver')
+        
 
 class serialPort:
     def __init__(self, config: dict):
@@ -426,19 +479,16 @@ class serialPort:
 
     def write(self, payload: bytes):
         '''
-        
         '''
         self.serial_connection.write(payload)
 
     def read(self) -> bytes:
         '''
-        
         '''
         return(self.serial_connection.readline())
     
     def serialThread(self):
         '''
-        
         '''
         while True:
             request_source = ""
@@ -454,7 +504,6 @@ class serialPort:
             if request_source:
                 self.write(request["payload"])
                 if(request["reply"]):
-#                    time.sleep(2)
                     reply = self.read()
                     print(reply)
                     if reply.count(b'end') > 1:
@@ -472,7 +521,6 @@ class serialPort:
 
     def run(self):
         '''
-        
         '''
         _t1 = Thread(target=self.serialThread)
         _t1.start()
@@ -486,7 +534,6 @@ class redisClient:
 
     def queueRedisThread(self):
         '''
-        
         '''
         while(True):
             try:
@@ -502,7 +549,6 @@ class redisClient:
 
     def broadcastRedisThread(self):
         '''
-        
         '''
         while(True):
             try:
@@ -522,7 +568,6 @@ class redisClient:
 
     def run(self):
         '''
-        
         '''
         _t1 = Thread(target=self.queueRedisThread)
         _t2 = Thread(target=self.broadcastRedisThread)

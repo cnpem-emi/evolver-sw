@@ -1,10 +1,11 @@
 #!/usr/local/bin/env python3.6
 import json
-import os
 import socket
 import yaml
 import time
 import traceback
+import asyncio
+from multi_server import MultiServer
 from consts import functions
 from evolver_server import evolverServer, serialPort, redisClient
 from threading import Lock, Thread
@@ -19,139 +20,9 @@ with open(CONF_FILENAME, 'r') as ymlfile:
 
 
 # ==============================================================
-# Server and TCP port
+# Server
 eServer = None
-socketPort = 6001
-
-
-# ==============================================================
-# Locking object, for threads sync
-lock = Lock()
-
-
-
-
-def socketServer():
-    '''
-        
-    '''
-    while True:
-        try:
-            _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            _sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            _sock.bind(("", socketPort))
-            _sock.listen(1)
-
-            while True:
-                connection, client_address = _sock.accept()
-                try:
-                    while True:
-                        msg = connection.recv(1024)
-                        if msg:
-                            commands = msg.split(b'\r\n')
-                            for data in commands:
-                                if data:
-                                    # ==============================================================
-                                    # command(data: dict) -> dict
-                                    if (data[0] == functions["command"]["id"]):
-                                        info = json.loads(data[1:])
-                                        info = eServer.command(info)
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # getlastcommands() -> dict
-                                    elif (data[0] == functions["getlastcommands"]["id"]):
-                                        info = eServer.getlastcommands()
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # getcalibrationnames() -> list
-                                    elif (data[0] == functions["getcalibrationnames"]["id"]):
-                                        info = eServer.getcalibrationnames()
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # getfitnames() -> list
-                                    elif (data[0] == functions["getfitnames"]["id"]):
-                                        info = eServer.getfitnames()
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # getcalibration(data: dict) -> dict
-                                    elif (data[0] == functions["getcalibration"]["id"]):
-                                        info = json.loads(data[1:])
-                                        info = eServer.getcalibration(info)
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # setrawcalibration(data: dict) -> str
-                                    elif (data[0] == functions["setrawcalibration"]["id"]):
-                                        info = json.loads(data[1:])
-                                        info = eServer.setrawcalibration(info)
-                                        connection.sendall(bytes(info, 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # setfitcalibrations(data: dict)
-                                    elif (data[0] == functions["setfitcalibrations"]["id"]):
-                                        info = json.loads(data[1:])
-                                        eServer.setfitcalibrations(info)
-
-                                    # ==============================================================
-                                    # setactiveodcal(data: dict) -> list
-                                    elif (data[0] == functions["setactiveodcal"]["id"]):
-                                        info = json.loads(data[1:])
-                                        info = eServer.setactiveodcal(info)
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # getactivecal() -> list
-                                    elif (data[0] == functions["getactivecal"]["id"]):
-                                        info = eServer.getactivecal()
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # getdevicename() -> dict
-                                    elif (data[0] == functions["getdevicename"]["id"]):
-                                        info = eServer.getdevicename()
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # setdevicename(data: dict) -> dict
-                                    elif (data[0] == functions["setdevicename"]["id"]):
-                                        info = json.loads(data[1:])
-                                        info = eServer.setdevicename(info)
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # run commands() --> dict
-                                    elif (data[0] == functions["run_commands"]["id"]):
-                                        with lock:
-                                            info = eServer.run_commands()
-                                            connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # Get num commands() --> int
-                                    elif (data[0] == functions["get_num_commands"]["id"]):
-                                        info = eServer.get_num_commands()
-                                        connection.sendall(bytes(str(info), 'UTF-8') + b'\r\n')
-
-                                    # ==============================================================
-                                    # sub_command(list, dict) --> None
-                                    elif (data[0] == functions["sub_command"]["id"]):
-                                        with lock:
-                                            info = json.loads(data[1:])
-                                            eServer.sub_command(info, conf)
-
-                        else:
-                            break
-                except Exception:
-                    #logger.exception('Connection Error !')
-                    traceback.print_exc()
-                finally:
-                    connection.close()
-        finally:
-            _sock.close()
-    
+socketioPort = 6001
 
 
 
@@ -171,27 +42,31 @@ if __name__ == '__main__':
     redis = redisClient(conf)
     redis.run()
 
-    sServer = Thread(target=socketServer)
-    sServer.start()
+    # Set up the server
+    server_loop = asyncio.new_event_loop()
+    ms = MultiServer(loop=server_loop)
+    app1 = ms.add_app(port = conf['port'])
+    eServer.attach(app1)
+    ms.run_all()
+
 
 
     # Set up data broadcasting
-    last_time = time.time()
+    broadcastLoop = asyncio.new_event_loop()
+    last_time = None
+    running = False
 
     while True:
         current_time = time.time()
-        no_commands_in_queue = eServer.get_num_commands() == 0
-#        '''
-        if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue):
-            if current_time - last_time > conf['broadcast_timing']:
+        commands_in_queue = eServer.get_num_commands() > 0
+
+        if (last_time is None or current_time - last_time > conf['broadcast_timing'] or commands_in_queue) and not running:
+            if last_time is None or current_time - last_time > conf['broadcast_timing']:
                 last_time = current_time
             try:
-                with lock:
-                    for param in conf['experimental_params'].keys():
-                        if conf['experimental_params'][param]['recurring']:
-                            eServer.sub_command([{"param": param, "value":conf['experimental_params'][param]['value'], "type": "reading_command_char"}], conf)
-                    replies = eServer.run_commands()
+                running = True
+                broadcastLoop.run_until_complete(eServer.broadcast(commands_in_queue))
+                running = False
             except:
                 pass
-#        '''
         time.sleep(5)
