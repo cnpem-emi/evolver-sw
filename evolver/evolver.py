@@ -1,4 +1,5 @@
 #!/usr/local/bin/env python3.6
+import asyncio
 import json
 import os
 import socket
@@ -153,6 +154,43 @@ def socketServer():
             _sock.close()
     
 
+def socketBroadcast():
+    '''
+        
+    '''
+    while True:
+        try:
+            _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            _sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            _sock.bind(("", socketPort+1000))
+            _sock.listen(1)
+
+            while True:
+                connection, client_address = _sock.accept()
+                try:
+                    while True:
+                        msg = connection.recv(1024)
+                        if msg:
+                            commands = msg.split(b'\r\n')
+                            for data in commands:
+                                if data:
+                                    # ==============================================================
+                                    # command(data: dict) -> dict
+                                    if (data[0] == functions["command"]["id"]):
+                                        info = json.loads(data[1:])
+                                        info = eServer.command(info)
+                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
+                        else:
+                            break
+                except Exception:
+                    #logger.exception('Connection Error !')
+                    traceback.print_exc()
+                finally:
+                    connection.close()
+        finally:
+            _sock.close()
+    
+
 
 
 if __name__ == '__main__':
@@ -176,22 +214,21 @@ if __name__ == '__main__':
 
 
     # Set up data broadcasting
+    broadcastLoop = asyncio.new_event_loop()
     last_time = time.time()
+    running = False
 
     while True:
         current_time = time.time()
         no_commands_in_queue = eServer.get_num_commands() == 0
-#        '''
-        if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue):
-            if current_time - last_time > conf['broadcast_timing']:
-                last_time = current_time
-            try:
-                with lock:
-                    for param in conf['experimental_params'].keys():
-                        if conf['experimental_params'][param]['recurring']:
-                            eServer.sub_command([{"param": param, "value":conf['experimental_params'][param]['value'], "type": "reading_command_char"}], conf)
-                    replies = eServer.run_commands()
-            except:
-                pass
-#        '''
-        time.sleep(5)
+
+        if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue) and not running:
+                if current_time - last_time > conf['broadcast_timing']:
+                    last_time = current_time
+                    try:
+                        running = True
+                        broadcastLoop.run_until_complete(eServer.broadcast(not no_commands_in_queue))
+                        running = False
+                    except:
+                        pass
+        time.sleep(1)

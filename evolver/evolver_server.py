@@ -283,6 +283,14 @@ class evolverServer:
         print("Error reading calibrations file.", flush = True)
 
 
+    def clear_broadcast(self, param=None):
+        """ Removes broadcast commands of a specific param from queue """
+        for command in self.command_queue.queue:
+            if (command['param'] == param or param is None) and command['type'] == RECURRING:
+                self.command_queue.queue.remove(command)
+                break
+
+
     def run_commands(self) -> dict:
         '''
         
@@ -417,6 +425,24 @@ class evolverServer:
             self.command_queue.put({'param': parameter, 'value': value, 'type': type})
 
 
+    def broadcast(self, commands_in_queue: bool) -> dict:
+        broadcast_data = {}
+        self.clear_broadcast()
+        if commands_in_queue:
+            self.process_commands(self.evolver_conf['experimental_params'])
+
+        # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
+        broadcast_data['data'] =  self.run_commands()
+        broadcast_data['config'] = self.evolver_conf['experimental_params']
+
+        if commands_in_queue:
+            print('Broadcasting data', flush = True)
+            broadcast_data['ip'] = self.evolver_conf['evolver_ip']
+            broadcast_data['timestamp'] = time.time()
+            print(broadcast_data, flush = True)
+            broadcastQueue.put("B," + json.dumps(broadcast_data))
+
+
     
 
 class serialPort:
@@ -510,11 +536,17 @@ class redisClient:
                     # wait until there is a command in the list
                     _info = broadcastQueue.get(block=True).decode('UTF-8', errors='ignore')
                     _param = _info.split(",")[0]
-                    _data = _info.split(",")[1:17]
-                  
-                    if 'i' in _param[-1]:
-                        for _ss in range(16):
-                            self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
+
+                    if _param == 'B':
+                        _data = _info[2:]
+                        self.redis_client.set("broadcast_data", _data)
+
+                    else:
+                        _data = _info.split(",")[1:17]
+                    
+                        if 'i' in _param[-1]:
+                            for _ss in range(16):
+                                self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
 
             except:
                 logger.exception('Error in redis broadcast thread !')
