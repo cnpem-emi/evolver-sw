@@ -8,7 +8,7 @@ import time
 import traceback
 from consts import functions
 from evolver_server import evolverServer, serialPort, redisClient
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 
 
 # ==============================================================
@@ -28,7 +28,8 @@ socketPort = 6001
 # ==============================================================
 # Locking object, for threads sync
 lock = Lock()
-
+broadcast_event = Event()
+broadcast_data = {}
 
 
 
@@ -154,7 +155,7 @@ def socketServer():
             _sock.close()
     
 
-def socketBroadcast():
+def broadcastServer():
     '''
         
     '''
@@ -169,19 +170,12 @@ def socketBroadcast():
                 connection, client_address = _sock.accept()
                 try:
                     while True:
-                        msg = connection.recv(1024)
-                        if msg:
-                            commands = msg.split(b'\r\n')
-                            for data in commands:
-                                if data:
-                                    # ==============================================================
-                                    # command(data: dict) -> dict
-                                    if (data[0] == functions["command"]["id"]):
-                                        info = json.loads(data[1:])
-                                        info = eServer.command(info)
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
-                        else:
-                            break
+                        broadcast_event.wait()
+                        # ==============================================================
+                        # command(data: dict) -> dict
+                        connection.sendall(bytes(json.dumps(broadcast_data), 'UTF-8'))
+                        broadcast_event.clear()
+
                 except Exception:
                     #logger.exception('Connection Error !')
                     traceback.print_exc()
@@ -201,6 +195,12 @@ if __name__ == '__main__':
     conf['evolver_ip'] = s.getsockname()[0]
     s.close()
 
+    # Set up data broadcasting
+    broadcastLoop = asyncio.new_event_loop()
+    last_time = time.time()
+    running = False
+    broadcast_event.clear()
+
     # Set up the server
     eServer = evolverServer(conf)
     s=serialPort(conf)
@@ -212,23 +212,21 @@ if __name__ == '__main__':
     sServer = Thread(target=socketServer)
     sServer.start()
 
+    bServer = Thread(target=broadcastServer)
+    bServer.start()
 
-    # Set up data broadcasting
-    broadcastLoop = asyncio.new_event_loop()
-    last_time = time.time()
-    running = False
 
     while True:
         current_time = time.time()
         no_commands_in_queue = eServer.get_num_commands() == 0
 
-        if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue) and not running:
+        if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue): # and not running:
                 if current_time - last_time > conf['broadcast_timing']:
                     last_time = current_time
+                    print("BROADCAST!", last_time, current_time)
                     try:
-                        running = True
-                        broadcastLoop.run_until_complete(eServer.broadcast(not no_commands_in_queue))
-                        running = False
+                        broadcast_data = eServer.broadcast(no_commands_in_queue)
+                        broadcast_event.set()
                     except:
                         pass
         time.sleep(1)

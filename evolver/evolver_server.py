@@ -21,6 +21,7 @@ CALIBRATIONS_FILENAME = "calibrations.json"
 serialQueue = Queue()  # Items in queue: {"payload": bytes, "reply": boolean}
 redisQueue = Queue()   #                  payload: bytes to be sent // reply: wait for a reply?
 broadcastQueue = Queue()
+serialResponseQueue = Queue()
 
 # ---- REDIS CLIENT
 REDIS_INCOMING_QUEUE = "incoming_queue"
@@ -341,16 +342,16 @@ class evolverServer:
 
         # Construct the actual string and write out on the serial buffer
         serial_output = param + ','.join(output) + ',' + self.evolver_conf['serial_end_outgoing']
-        serialEvent = Event()
-        print(serial_output)
 
+        serialEvent = Event()
         serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, 'UTF-8'), "reply": True})
         serialEvent.wait()
 
         # Read and process the response
-        response = serialQueue.get(block=True).decode('UTF-8', errors='ignore')
+        response = serialResponseQueue.get(block=True)
+        if type(response) == bytes:
+            response = response.decode('UTF-8', errors='ignore')
 
-        print(response, flush = True)
         address = response[0:len(param)]
         if address != param:
             raise EvolverSerialError('Error: Response has incorrect address.\n\tExpected: ' + param + '\n\tFound:' + address)
@@ -375,7 +376,9 @@ class evolverServer:
         serial_output[0] = self.evolver_conf['acknowledge_char']
         serial_output = param + ','.join(serial_output) + ',' + self.evolver_conf['serial_end_outgoing']
 
-        serialQueue.put({"payload": bytes(serial_output, 'UTF-8'), "reply": False})
+        serialEvent = Event()
+        serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, 'UTF-8'), "reply": False})
+        serialEvent.wait()
 
         # This is necessary to allow the ack to be fully written out to samd21 and for them to fully read
         time.sleep(self.evolver_conf['serial_delay'])
@@ -436,12 +439,11 @@ class evolverServer:
         broadcast_data['config'] = self.evolver_conf['experimental_params']
 
         if commands_in_queue:
-            print('Broadcasting data', flush = True)
             broadcast_data['ip'] = self.evolver_conf['evolver_ip']
             broadcast_data['timestamp'] = time.time()
-            print(broadcast_data, flush = True)
             broadcastQueue.put("B," + json.dumps(broadcast_data))
 
+        return broadcast_data
 
     
 
@@ -480,22 +482,21 @@ class serialPort:
             if request_source:
                 self.write(request["payload"])
                 if(request["reply"]):
-#                    time.sleep(2)
                     reply = self.read()
-                    print(reply)
                     if reply.count(b'end') > 1:
                         reply = reply.split(b'end')[-2]+b'end'
 
                     if request_source == 'serial':
-                        serialQueue.put(reply)
+                        serialResponseQueue.put(reply)
                     elif request_source == 'redis':
                         redisQueue.put(reply)
                     broadcastQueue.put(reply)
-                    if "event" in request.keys():
-                        request["event"].set()
 
-            time.sleep(self.sleepTime)
+                time.sleep(self.sleepTime)
+                if "event" in request.keys():
+                    request["event"].set()
 
+                time.sleep(0.5)
     def run(self):
         '''
         
@@ -534,7 +535,9 @@ class redisClient:
             try:
                 while(True):
                     # wait until there is a command in the list
-                    _info = broadcastQueue.get(block=True).decode('UTF-8', errors='ignore')
+                    _info = broadcastQueue.get(block=True) #.decode('UTF-8', errors='ignore')
+                    if type(_info) == bytes:
+                        _info = _info.decode('UTF-8', errors='ignore')
                     _param = _info.split(",")[0]
 
                     if _param == 'B':
@@ -544,7 +547,7 @@ class redisClient:
                     else:
                         _data = _info.split(",")[1:17]
                     
-                        if 'i' in _param[-1]:
+                        if 'b' in _param[-1]:
                             for _ss in range(16):
                                 self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
 
