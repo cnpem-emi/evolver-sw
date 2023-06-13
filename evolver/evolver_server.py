@@ -87,8 +87,10 @@ class evolverServer:
 #            yaml.dump(self.evolver_conf, ymlfile)
 
         if immediate:
+            self.clear_broadcast(param)
             self.command_queue.put({'param': param, 'value': value, 'type': IMMEDIATE})
         elif readonly:
+            self.clear_broadcast(param)
             self.command_queue.put({'param': param, 'value': value, 'type': READ_ONLY})
 
         return(data)
@@ -341,6 +343,7 @@ class evolverServer:
             raise EvolverSerialError('Error: Number of fields outgoing for ' + param + ' different from expected\n\tExpected: ' + str(fields_expected_outgoing) + '\n\tFound: ' + str(len(output)))
 
         # Construct the actual string and write out on the serial buffer
+        print("Updating param ", param)
         serial_output = param + ','.join(output) + ',' + self.evolver_conf['serial_end_outgoing']
 
         serialEvent = Event()
@@ -431,14 +434,14 @@ class evolverServer:
     def broadcast(self, commands_in_queue: bool) -> dict:
         broadcast_data = {}
         self.clear_broadcast()
-        if commands_in_queue:
+        if not commands_in_queue:
             self.process_commands(self.evolver_conf['experimental_params'])
 
         # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
         broadcast_data['data'] =  self.run_commands()
         broadcast_data['config'] = self.evolver_conf['experimental_params']
 
-        if commands_in_queue:
+        if 1: #commands_in_queue:
             broadcast_data['ip'] = self.evolver_conf['evolver_ip']
             broadcast_data['timestamp'] = time.time()
             broadcastQueue.put("B," + json.dumps(broadcast_data))
@@ -490,7 +493,7 @@ class serialPort:
                         serialResponseQueue.put(reply)
                     elif request_source == 'redis':
                         redisQueue.put(reply)
-                    broadcastQueue.put(reply)
+                    #broadcastQueue.put(reply)
 
                 time.sleep(self.sleepTime)
                 if "event" in request.keys():

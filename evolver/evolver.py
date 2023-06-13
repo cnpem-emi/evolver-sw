@@ -58,7 +58,7 @@ def socketServer():
                                     if (data[0] == functions["command"]["id"]):
                                         info = json.loads(data[1:])
                                         info = eServer.command(info)
-                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
+#                                        connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
 
                                     # ==============================================================
                                     # getlastcommands() -> dict
@@ -200,6 +200,8 @@ if __name__ == '__main__':
     last_time = time.time()
     running = False
     broadcast_event.clear()
+    bevent = False
+
 
     # Set up the server
     eServer = evolverServer(conf)
@@ -218,15 +220,17 @@ if __name__ == '__main__':
 
     while True:
         current_time = time.time()
-        no_commands_in_queue = eServer.get_num_commands() == 0
+        commands_in_queue = eServer.get_num_commands() > 0
 
-        if (current_time - last_time > conf['broadcast_timing'] or no_commands_in_queue): # and not running:
+        if (current_time - last_time > conf['broadcast_timing'] or commands_in_queue): # and not running:
+                try:
+                    broadcast_data = eServer.broadcast(commands_in_queue)
+                except:
+                    pass
+
                 if current_time - last_time > conf['broadcast_timing']:
                     last_time = current_time
-                    print("BROADCAST!", last_time, current_time)
-                    try:
-                        broadcast_data = eServer.broadcast(no_commands_in_queue)
-                        broadcast_event.set()
-                    except:
-                        pass
+                    broadcast_event.set()
+
+
         time.sleep(1)
