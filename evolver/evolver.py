@@ -18,6 +18,8 @@ CONF_FILENAME = 'conf.yml'
 with open(CONF_FILENAME, 'r') as ymlfile:
     conf = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
+OD_CAL_FILE = "od_cal.json"
+TEMP_CAL_FILE = "temp_cal.json"
 
 # ==============================================================
 # Server and TCP port
@@ -51,6 +53,7 @@ def socketServer():
                         msg = connection.recv(1024)
                         if msg:
                             commands = msg.split(b'\r\n')
+                            print(commands)
                             for data in commands:
                                 if data:
                                     # ==============================================================
@@ -108,6 +111,7 @@ def socketServer():
                                     # ==============================================================
                                     # getactivecal() -> list
                                     elif (data[0] == functions["getactivecal"]["id"]):
+                                        print("Get active calibration...")
                                         info = eServer.getactivecal()
                                         connection.sendall(bytes(json.dumps(info), 'UTF-8') + b'\r\n')
 
@@ -208,7 +212,7 @@ if __name__ == '__main__':
     s=serialPort(conf)
     s.run()
     
-    redis = redisClient(conf)
+    redis = redisClient(conf, OD_CAL_FILE, TEMP_CAL_FILE)
     redis.run()
 
     sServer = Thread(target=socketServer)

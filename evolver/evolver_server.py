@@ -6,6 +6,7 @@ import sys
 import os
 import yaml
 import redis
+import numpy as np
 from threading import Event, Thread
 from traceback import print_exc
 from queue import Queue
@@ -407,7 +408,7 @@ class evolverServer:
             Immediate commands will have already been added to queue, so are ignored
         """
         for param, config in parameters.items():
-            if config['recurring']: 
+            if config['monitor']: 
                 if "pre" in config: # run this command prior to the main command
                     self.sub_command(config['pre'], parameters)
 
@@ -483,6 +484,7 @@ class serialPort:
                 request_source = 'redis'
 
             if request_source:
+                print(request["payload"])
                 self.write(request["payload"])
                 if(request["reply"]):
                     reply = self.read()
@@ -493,7 +495,7 @@ class serialPort:
                         serialResponseQueue.put(reply)
                     elif request_source == 'redis':
                         redisQueue.put(reply)
-                    #broadcastQueue.put(reply)
+                    broadcastQueue.put(reply)
 
                 time.sleep(self.sleepTime)
                 if "event" in request.keys():
@@ -511,8 +513,10 @@ class serialPort:
 
 class redisClient:
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, od_cal_path: str, temp_cal_path: str):
         self.redis_client = redis.Redis(config["redis_server_ip"], config["redis_server_port"], config["redis_server_passwd"]) 
+        self.od_cal_path = od_cal_path
+        self.temp_cal_path = temp_cal_path
 
     def queueRedisThread(self):
         '''
@@ -539,6 +543,7 @@ class redisClient:
                 while(True):
                     # wait until there is a command in the list
                     _info = broadcastQueue.get(block=True) #.decode('UTF-8', errors='ignore')
+
                     if type(_info) == bytes:
                         _info = _info.decode('UTF-8', errors='ignore')
                     _param = _info.split(",")[0]
@@ -548,11 +553,74 @@ class redisClient:
                         self.redis_client.set("broadcast_data", _data)
 
                     else:
+                        with open(self.temp_cal_path) as f:
+                            temp_cal = json.load(f)
+                        with open(self.od_cal_path) as f:
+                            od_cal = json.load(f)
+                            if od_cal['type'] == '3d':
+                                od_data_2 = data['data'].get(od_cal['params'][1], None)
                         _data = _info.split(",")[1:17]
-                    
-                        if 'b' in _param[-1]:
+                        print(_param, _data)
+
+
+
+                        if 'e' in _param[-1]:
                             for _ss in range(16):
-                                self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
+                                if "stir" in _param[:-1]:
+                                    stir_percent = (float(_data[_ss])/4095.0)
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                elif "pump" in _param[:-1]:
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
+
+                            self.redis_client.set("{}_timestamp".format(_param[:-1]), time.time())
+
+
+
+                        elif 'b' in _param[-1]:
+                            for _ss in range(16):
+
+                                if "stir" in _param[:-1]:
+                                    stir_percent = (float(_data[_ss])/4095.0)
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
+
+
+                                elif "temp" in _param[:-1]:
+                                    temp_coefficients = temp_cal['coefficients'][_ss]
+                                    temp_value = (float(_data[_ss]) * temp_coefficients[0]) + temp_coefficients[1]
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
+
+                                elif "od_135" in _param[:-1]:
+                                    od_coefficients = od_cal['coefficients'][_ss]
+                                    try:
+                                        if od_cal['type'] == 'sigmoid':
+                                            #convert raw photodiode data into ODdata using calibration curve
+                                            od_data = np.real(od_coefficients[2] -
+                                                   ((np.log10((od_coefficients[1] -
+                                                         od_coefficients[0]) /
+                                                         (float(_data[_ss]) -
+                                                         od_coefficients[0])-1)) /
+                                                         od_coefficients[3]))
+                                            if not np.isfinite(od_data):
+                                                od_data = 'NaN'
+                                        elif od_cal['type'] == '3d':
+                                            od_data = np.real(od_coefficients[0] +
+                                                                (od_coefficients[1]*float(_data[_ss])) +
+                                                                (od_coefficients[2]*float(od_data_2[_ss])) +
+                                                                (od_coefficients[3]*(float(_data[_ss])**2)) +
+                                                                (od_coefficients[4]*float(_data[_ss])*float(od_data_2[_ss])) +
+                                                                (od_coefficients[5]*(float(od_data_2[_ss])**2)))
+                                        else:
+                                            logger.error('OD calibration not of supported type!')
+                                            od_data = 'NaN'
+                                    except ValueError:
+                                        print("OD Read Error")
+                                        logger.error('OD read error for vial %d, setting to NaN' % x)
+                                        od_data = 'NaN'
+
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), od_data)
+
+                            self.redis_client.set("{}_timestamp".format(_param[:-1]), time.time())
+
 
             except:
                 logger.exception('Error in redis broadcast thread !')
