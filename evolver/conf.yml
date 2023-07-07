@@ -3,36 +3,43 @@
 experimental_params:
   od_90:
     recurring: false
+    monitor: false
     fields_expected_outgoing: 2
     fields_expected_incoming: 17
     value: '1000'
   od_135:
     recurring: true
+    monitor: true
     fields_expected_outgoing: 2
     fields_expected_incoming: 17
     value: '1000'
   od_led:
     recurring: false
+    monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
     value: ['4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095']
   temp:
     recurring: true
+    monitor: true
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
     value: ['4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095', '4095']
   stir:
     recurring: false
+    monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
     value: ['8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8']
   pump:
     recurring: false
+    monitor: false
     fields_expected_outgoing: 49
     fields_expected_incoming: 49
-    value: null
+    value: ['--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--']
   lxml:
     recurring: false
+    monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
     value: ['4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095']

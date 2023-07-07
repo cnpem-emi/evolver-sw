@@ -16,6 +16,7 @@ IMMEDIATE = 'immediate_command_char'
 RECURRING = 'recurring_command_char'
 READ_ONLY = 'reading_command_char'
 CALIBRATIONS_FILENAME = "calibrations.json"
+CHANNEL_INDEX_PATH = "channel_index.json"
 
 
 # ---- QUEUES
@@ -346,6 +347,7 @@ class evolverServer:
         # Construct the actual string and write out on the serial buffer
         print("Updating param ", param)
         serial_output = param + ','.join(output) + ',' + self.evolver_conf['serial_end_outgoing']
+        serial_output = serial_output.replace('nan', '--')
 
         serialEvent = Event()
         serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, 'UTF-8'), "reply": True})
@@ -413,7 +415,7 @@ class evolverServer:
                     self.sub_command(config['pre'], parameters)
 
                 # Main command
-                self.command_queue.put({'param': param, 'value': config['value'], 'type': RECURRING})
+                self.command_queue.put({'param': param, 'value': config['value'], 'type': READ_ONLY})
 
                 if "post" in config: # run this command after the main command
                     self.sub_command(config['post'], parameters)
@@ -435,7 +437,19 @@ class evolverServer:
     def broadcast(self, commands_in_queue: bool) -> dict:
         broadcast_data = {}
         self.clear_broadcast()
+
+
+        
+
+
         if not commands_in_queue:
+        #    self.command({"param": "od_led", 
+        #                             "value": [0]*16, 
+        #                             "immediate": True, 
+        #                             "recurring": True})
+        #    self.run_commands()
+            time.sleep(2)
+
             self.process_commands(self.evolver_conf['experimental_params'])
 
         # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
@@ -446,6 +460,12 @@ class evolverServer:
             broadcast_data['ip'] = self.evolver_conf['evolver_ip']
             broadcast_data['timestamp'] = time.time()
             broadcastQueue.put("B," + json.dumps(broadcast_data))
+
+        #self.command({"param": "od_led", 
+        #                             "value": [4095]*16, 
+        #                             "immediate": True, 
+        #                             "recurring": True})
+        #self.run_commands()
 
         return broadcast_data
 
@@ -486,8 +506,13 @@ class serialPort:
             if request_source:
                 print(request["payload"])
                 self.write(request["payload"])
+
                 if(request["reply"]):
                     reply = self.read()
+                    if not reply:
+                        time.sleep(2)
+                        self.write(request["payload"])
+
                     if reply.count(b'end') > 1:
                         reply = reply.split(b'end')[-2]+b'end'
 
@@ -495,7 +520,11 @@ class serialPort:
                         serialResponseQueue.put(reply)
                     elif request_source == 'redis':
                         redisQueue.put(reply)
+                    
                     broadcastQueue.put(reply)
+                    # Temperature has no echo when sending a setpoint, so:
+                    if request["payload"][:5] == b'tempi':
+                        broadcastQueue.put(request["payload"])
 
                 time.sleep(self.sleepTime)
                 if "event" in request.keys():
@@ -515,6 +544,7 @@ class redisClient:
 
     def __init__(self, config: dict, od_cal_path: str, temp_cal_path: str):
         self.redis_client = redis.Redis(config["redis_server_ip"], config["redis_server_port"], config["redis_server_passwd"]) 
+        self.redis_sirius = redis.StrictRedis("127.0.0.1") #"10.0.38.46") 
         self.od_cal_path = od_cal_path
         self.temp_cal_path = temp_cal_path
 
@@ -528,8 +558,12 @@ class redisClient:
                     # wait until there is a command in the list
                     # command = {"payload": bytes, "reply": boolean}
                     command = json.loads(self.redis_client.brpop(REDIS_INCOMING_QUEUE)[1])
+                    print(command)
                     redisQueue.put(command)
-                    self.redis_client.lpush(redisQueue.get(block=True))
+                    time.sleep(5)
+                    ans = redisQueue.get(block=True)
+                    print(ans)
+                    self.redis_client.lpush(ans)
             except:
                 logger.exception('Error in redis queue thread !')
 
@@ -553,6 +587,8 @@ class redisClient:
                         self.redis_client.set("broadcast_data", _data)
 
                     else:
+                        with open(CHANNEL_INDEX_PATH) as f:
+                            channelIdx = json.load(f)
                         with open(self.temp_cal_path) as f:
                             temp_cal = json.load(f)
                         with open(self.od_cal_path) as f:
@@ -564,30 +600,52 @@ class redisClient:
 
 
 
-                        if 'e' in _param[-1]:
+                        if ('e' in _param[-1]) or ('i' in _param[-1]):
                             for _ss in range(16):
                                 if "stir" in _param[:-1]:
-                                    stir_percent = (float(_data[_ss])/4095.0)
-                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
-                                elif "pump" in _param[:-1]:
-                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), _data[_ss])
+                                    stir_percent = 100*(float(_data[_ss])/4095.0)
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
 
-                            self.redis_client.set("{}_timestamp".format(_param[:-1]), time.time())
+                                elif "pump" in _param[:-1]:
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), _data[_ss])
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), _data[_ss])
+
+                                elif "od_led" in _param[:-1]:
+                                    led_percent = 100*(float(_data[_ss])/4095.0)
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), led_percent)
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), led_percent)
+
+                                elif "temp" in _param[:-1]:
+                                    temp_coefficients = temp_cal['coefficients'][_ss]
+                                    try:
+                                        temp_value = (float(_data[_ss]) * temp_coefficients[0]) + temp_coefficients[1]
+                                        self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), temp_value)
+                                        self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), temp_value)
+                                    except:
+                                        continue
+                                    
+
+                            self.redis_client.set("{}_set_timestamp".format(_param[:-1]), time.time())
+                            self.redis_sirius.set("{}_set_timestamp".format(_param[:-1]), time.time())
 
 
 
                         elif 'b' in _param[-1]:
                             for _ss in range(16):
+                                index = channelIdx[str(_ss)]["channel"]
 
                                 if "stir" in _param[:-1]:
-                                    stir_percent = (float(_data[_ss])/4095.0)
+                                    stir_percent = (float(_data[index])/4095.0)
                                     self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
 
 
                                 elif "temp" in _param[:-1]:
                                     temp_coefficients = temp_cal['coefficients'][_ss]
-                                    temp_value = (float(_data[_ss]) * temp_coefficients[0]) + temp_coefficients[1]
+                                    temp_value = (float(_data[index]) * temp_coefficients[0]) + temp_coefficients[1]
                                     self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
 
                                 elif "od_135" in _param[:-1]:
                                     od_coefficients = od_cal['coefficients'][_ss]
@@ -597,7 +655,7 @@ class redisClient:
                                             od_data = np.real(od_coefficients[2] -
                                                    ((np.log10((od_coefficients[1] -
                                                          od_coefficients[0]) /
-                                                         (float(_data[_ss]) -
+                                                         (float(_data[index]) -
                                                          od_coefficients[0])-1)) /
                                                          od_coefficients[3]))
                                             if not np.isfinite(od_data):
@@ -618,8 +676,10 @@ class redisClient:
                                         od_data = 'NaN'
 
                                     self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), od_data)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), od_data)
 
                             self.redis_client.set("{}_timestamp".format(_param[:-1]), time.time())
+                            self.redis_sirius.set("{}_timestamp".format(_param[:-1]), time.time())
 
 
             except:
