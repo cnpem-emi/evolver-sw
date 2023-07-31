@@ -27,7 +27,7 @@ serialResponseQueue = Queue()
 
 # ---- REDIS CLIENT
 REDIS_INCOMING_QUEUE = "incoming_queue"
-REDIS_OUTCOMING_QUEUE = "incoming_queue"
+REDIS_OUTCOMING_QUEUE = "outcoming_queue"
 
 
 # ---- LOGGING

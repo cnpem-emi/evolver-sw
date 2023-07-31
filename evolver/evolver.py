@@ -1,5 +1,4 @@
 #!/usr/local/bin/env python3.6
-import asyncio
 import json
 import os
 import socket
@@ -9,6 +8,26 @@ import traceback
 from consts import functions
 from evolver_server import evolverServer, serialPort, redisClient
 from threading import Event, Lock, Thread
+
+# ==============================================================
+# THREADS FOR EVOLVER-SW:
+#
+# --- SerialThread (from evolver_server.py):
+#     Dealing with serial RS485 communication and data exchange
+#
+# --- RedisThread (from evolver_server.py):
+#     Redis local client/database for variable mirroring
+#
+# --- SocketServer:
+#     Communication with hardware access. Based on request-reply messages
+#
+# --- BroadcastServer:
+#     Unidirectional. Send data to client every time a new data set is available
+#
+# --- Main loop/thread:
+#     Infinite while-loop, where broadcast/reading routine is handled
+#
+# ==============================================================
 
 
 # ==============================================================
@@ -28,7 +47,7 @@ socketPort = 6001
 
 
 # ==============================================================
-# Locking object, for threads sync
+# Locking object, for threads sync (similar to mutex)
 lock = Lock()
 broadcast_event = Event()
 broadcast_data = {}
@@ -37,7 +56,15 @@ broadcast_data = {}
 
 def socketServer():
     '''
-        
+    Server side for evolver communication. Based on request-reply messages.
+
+    REQUEST:
+    data[0] = COMMAND_CODE (see consts.py)
+    data[1:-2] = data dumped into bytes
+    data[-2:] = b'\r\n' end of message
+
+    REPLY:
+    Similar structure.
     '''
     while True:
         try:
@@ -53,7 +80,6 @@ def socketServer():
                         msg = connection.recv(1024)
                         if msg:
                             commands = msg.split(b'\r\n')
-                            print(commands)
                             for data in commands:
                                 if data:
                                     # ==============================================================
@@ -159,9 +185,11 @@ def socketServer():
             _sock.close()
     
 
+
+
 def broadcastServer():
     '''
-        
+    Listen to a socket connection (dedicated port!) and send values once broadcast data/event is ready  
     '''
     while True:
         try:
@@ -193,36 +221,46 @@ def broadcastServer():
 
 if __name__ == '__main__':
 
-    # need to get IP
+    # need to get this unity IP
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
     conf['evolver_ip'] = s.getsockname()[0]
     s.close()
 
     # Set up data broadcasting
-    broadcastLoop = asyncio.new_event_loop()
     last_time = time.time()
     running = False
     broadcast_event.clear()
-    bevent = False
 
 
-    # Set up the server
+    # NEW THREAD
+    # Set up the hardware server - Serial communication with hardware
     eServer = evolverServer(conf)
-    s=serialPort(conf)
+    s = serialPort(conf)
     s.run()
     
+    # NEW THREAD
+    # Redis local client/database for variable mirror
     redis = redisClient(conf, OD_CAL_FILE, TEMP_CAL_FILE)
     redis.run()
 
+    # NEW THREAD
+    # SocketServer, communicating with client (USUAL CLIENT: DPU)
     sServer = Thread(target=socketServer)
     sServer.start()
 
+    # NEW THREAD
+    # BroadcastServer, broadcasting data to client (USUAL CLIENT: DPU)
     bServer = Thread(target=broadcastServer)
     bServer.start()
 
 
     while True:
+        '''
+        *** Infinite loop ***
+        Request commands to be execute (if there are commands in queue) or
+        request broadcast update if broadcast_timing is reached
+        '''
         current_time = time.time()
         commands_in_queue = eServer.get_num_commands() > 0
 
