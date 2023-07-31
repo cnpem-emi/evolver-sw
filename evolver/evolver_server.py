@@ -52,14 +52,12 @@ class evolverServer:
         '''
         self.command_queue = Queue()
         self.evolver_conf = config
-        self.serial_connection = serial.Serial(port=self.evolver_conf['serial_port'], baudrate = self.evolver_conf['serial_baudrate'], timeout = self.evolver_conf['serial_timeout'])
 
 
     def command(self, data: dict) -> dict:
         '''
         
         '''
-        print('Received COMMAND', flush = True)
         param = data.get('param', None)
         value = data.get('value', None)
         immediate = data.get('immediate', None)
@@ -76,10 +74,13 @@ class evolverServer:
                         self.evolver_conf['experimental_params'][param]['value'][i] = value[i]
             else:
                 self.evolver_conf['experimental_params'][param]['value'] = value
+
         if recurring is not None:
             self.evolver_conf['experimental_params'][param]['recurring'] = recurring
+
         if fields_expected_outgoing is not None:
             self.evolver_conf['experimental_params'][param]['fields_expected_outgoing'] = fields_expected_outgoing
+
         if fields_expected_incoming is not None:
             self.evolver_conf['experimental_params'][param]['fields_expected_incoming'] = fields_expected_incoming
 
@@ -438,18 +439,8 @@ class evolverServer:
         broadcast_data = {}
         self.clear_broadcast()
 
-
-        
-
-
         if not commands_in_queue:
-        #    self.command({"param": "od_led", 
-        #                             "value": [0]*16, 
-        #                             "immediate": True, 
-        #                             "recurring": True})
-        #    self.run_commands()
             time.sleep(2)
-
             self.process_commands(self.evolver_conf['experimental_params'])
 
         # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
@@ -461,36 +452,38 @@ class evolverServer:
             broadcast_data['timestamp'] = time.time()
             broadcastQueue.put("B," + json.dumps(broadcast_data))
 
-        #self.command({"param": "od_led", 
-        #                             "value": [4095]*16, 
-        #                             "immediate": True, 
-        #                             "recurring": True})
-        #self.run_commands()
-
         return broadcast_data
 
     
 
 class serialPort:
+    '''
+    This class deals with serial port and hardware communication.
+    '''
     def __init__(self, config: dict):
         self.serial_connection = serial.Serial(port=config['serial_port'], baudrate = config['serial_baudrate'], timeout = config['serial_timeout'])
         self.sleepTime = config['serial_delay']
 
+
     def write(self, payload: bytes):
         '''
-        
+        Write to serial tty buffer
         '''
         self.serial_connection.write(payload)
 
+
     def read(self) -> bytes:
         '''
-        
+        Get reply from serial tty buffer
         '''
         return(self.serial_connection.readline())
     
+
     def serialThread(self):
         '''
-        
+        This method should be a thread.
+        It will handle communication queues (either via serial/common flow or Redis),
+        put data into serial port and redirect replies.
         '''
         while True:
             request_source = ""
@@ -504,7 +497,6 @@ class serialPort:
                 request_source = 'redis'
 
             if request_source:
-                print(request["payload"])
                 self.write(request["payload"])
 
                 if(request["reply"]):
@@ -521,6 +513,7 @@ class serialPort:
                     elif request_source == 'redis':
                         redisQueue.put(reply)
                     
+                    # Echo reply for broadcast queue, in order to mirror values to Redis database
                     broadcastQueue.put(reply)
                     # Temperature has no echo when sending a setpoint, so:
                     if request["payload"][:5] == b'tempi':
@@ -533,7 +526,7 @@ class serialPort:
                 time.sleep(0.5)
     def run(self):
         '''
-        
+        Run thread!
         '''
         _t1 = Thread(target=self.serialThread)
         _t1.start()
@@ -558,11 +551,10 @@ class redisClient:
                     # wait until there is a command in the list
                     # command = {"payload": bytes, "reply": boolean}
                     command = json.loads(self.redis_client.brpop(REDIS_INCOMING_QUEUE)[1])
-                    print(command)
                     redisQueue.put(command)
                     time.sleep(5)
+                    
                     ans = redisQueue.get(block=True)
-                    print(ans)
                     self.redis_client.lpush(ans)
             except:
                 logger.exception('Error in redis queue thread !')
@@ -688,7 +680,7 @@ class redisClient:
 
     def run(self):
         '''
-        
+        Run thread!
         '''
         _t1 = Thread(target=self.queueRedisThread)
         _t2 = Thread(target=self.broadcastRedisThread)
