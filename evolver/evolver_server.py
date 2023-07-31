@@ -534,16 +534,21 @@ class serialPort:
 
 
 class redisClient:
-
+    '''
+    This class deals with Redis database
+    - As a command source (not used yet)
+    - As a broadcast unit
+    '''
     def __init__(self, config: dict, od_cal_path: str, temp_cal_path: str):
         self.redis_client = redis.Redis(config["redis_server_ip"], config["redis_server_port"], config["redis_server_passwd"]) 
-        self.redis_sirius = redis.StrictRedis("127.0.0.1") #"10.0.38.46") 
+        self.redis_sirius = redis.StrictRedis("127.0.0.1") #"10.0.38.46") # Mapping Redis @Sirius for RedisIOC/Archiving WHEN AUTHORIZED! (evolver is not a Sirius application)
         self.od_cal_path = od_cal_path
         self.temp_cal_path = temp_cal_path
 
     def queueRedisThread(self):
         '''
-        
+        This thread checks if a command is available at a Redis incoming_queue.
+        If so, send it serial queue (redisQueue) and push reply to Redis outcoming_queue.
         '''
         while(True):
             try:
@@ -553,16 +558,17 @@ class redisClient:
                     command = json.loads(self.redis_client.brpop(REDIS_INCOMING_QUEUE)[1])
                     redisQueue.put(command)
                     time.sleep(5)
-                    
+
                     ans = redisQueue.get(block=True)
-                    self.redis_client.lpush(ans)
+                    self.redis_client.lpush(REDIS_OUTCOMING_QUEUE, ans)
             except:
                 logger.exception('Error in redis queue thread !')
 
 
     def broadcastRedisThread(self):
         '''
-        
+        This thread monitors broadcastQueue (which stores a copy of messages/replies) and save variables into redis keys.
+        It stores raw values and also real values after calibration applied.
         '''
         while(True):
             try:
@@ -579,6 +585,7 @@ class redisClient:
                         self.redis_client.set("broadcast_data", _data)
 
                     else:
+                        # Get calibrations !
                         with open(CHANNEL_INDEX_PATH) as f:
                             channelIdx = json.load(f)
                         with open(self.temp_cal_path) as f:
@@ -587,11 +594,11 @@ class redisClient:
                             od_cal = json.load(f)
                             if od_cal['type'] == '3d':
                                 od_data_2 = data['data'].get(od_cal['params'][1], None)
+
+
                         _data = _info.split(",")[1:17]
-                        print(_param, _data)
 
-
-
+                        # If echoing or immediate commands:
                         if ('e' in _param[-1]) or ('i' in _param[-1]):
                             for _ss in range(16):
                                 if "stir" in _param[:-1]:
@@ -622,9 +629,10 @@ class redisClient:
                             self.redis_sirius.set("{}_set_timestamp".format(_param[:-1]), time.time())
 
 
-
+                        # If broadcasting data:
                         elif 'b' in _param[-1]:
                             for _ss in range(16):
+                                # Here, index maps smart sleeves vs vector channel index
                                 index = channelIdx[str(_ss)]["channel"]
 
                                 if "stir" in _param[:-1]:
