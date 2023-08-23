@@ -15,8 +15,8 @@ LOCATION = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__))
 IMMEDIATE = 'immediate_command_char'
 RECURRING = 'recurring_command_char'
 READ_ONLY = 'reading_command_char'
-CALIBRATIONS_FILENAME = "calibrations.json"
-CHANNEL_INDEX_PATH = "channel_index.json"
+CALIBRATIONS_FILENAME = "calibrations/calibrations.json"
+CHANNEL_INDEX_PATH = "config/channel_index.json"
 
 
 # ---- QUEUES
@@ -115,8 +115,10 @@ class evolverServer:
         try:
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
                 calibrations = json.load(f)
+                
                 for calibration in calibrations:
                     calibration_names.append({'name': calibration['name'], 'calibrationType': calibration['calibrationType']})
+        
         except FileNotFoundError:
             self.print_calibration_file_error()
 
@@ -358,6 +360,7 @@ class evolverServer:
         response = serialResponseQueue.get(block=True)
         if type(response) == bytes:
             response = response.decode('UTF-8', errors='ignore')
+        
 
         address = response[0:len(param)]
         if address != param:

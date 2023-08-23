@@ -1,12 +1,6 @@
 ---
 # eVOLVER experimental parameter configurations
 experimental_params:
-  od_90:
-    recurring: false
-    monitor: false
-    fields_expected_outgoing: 2
-    fields_expected_incoming: 17
-    value: '1000'
   od_135:
     recurring: true
     monitor: true
@@ -37,13 +31,7 @@ experimental_params:
     fields_expected_outgoing: 49
     fields_expected_incoming: 49
     value: ['--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--']
-  lxml:
-    recurring: false
-    monitor: false
-    fields_expected_outgoing: 17
-    fields_expected_incoming: 17
-    value: ['4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095']
-
+  
 # eVOLVER server parameter configurations
 broadcast_timing: 20
 num_sleeves: 16
@@ -51,7 +39,7 @@ port: 8081
 
 # RPi file locations and names
 device: evolver-config.json
-calibration: calibration.json
+calibration: calibrations/calibration.json
 calibrations_directory: calibrations
 fitted_data_directory: fittedCal
 raw_data_directory: rawCal

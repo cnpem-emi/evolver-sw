@@ -33,12 +33,12 @@ from threading import Event, Lock, Thread
 # ==============================================================
 # Configuration file
 conf = {}
-CONF_FILENAME = 'conf.yml'
+CONF_FILENAME = 'config/conf.yml'
 with open(CONF_FILENAME, 'r') as ymlfile:
     conf = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
-OD_CAL_FILE = "od_cal.json"
-TEMP_CAL_FILE = "temp_cal.json"
+OD_CAL_FILE = "calibrations/od_cal.json"
+TEMP_CAL_FILE = "calibrations/temp_cal.json"
 
 # ==============================================================
 # Server and TCP port
@@ -205,6 +205,7 @@ def broadcastServer():
                         broadcast_event.wait()
                         # ==============================================================
                         # command(data: dict) -> dict
+                        #print('BROADCAST_DATA', broadcast_data)
                         connection.sendall(bytes(json.dumps(broadcast_data), 'UTF-8'))
                         broadcast_event.clear()
 
