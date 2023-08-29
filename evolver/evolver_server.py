@@ -252,7 +252,15 @@ class evolverServer:
             self.print_calibration_file_error()
 
     def getdevicename(self) -> dict:
-        """ """
+        """
+        Get device info from evolver-config.json,
+        which has to be in the same directory as this file.
+
+        Returns:
+        --------
+        configJSON: dict
+            Dictionary containing device info.
+        """
         self.config_path = os.path.join(LOCATION)
         with open(os.path.join(LOCATION, self.evolver_conf["device"])) as f:
             configJSON = json.load(f)

@@ -37,6 +37,7 @@ CONF_FILENAME = "config/conf.yml"
 with open(CONF_FILENAME, "r") as ymlfile:
     conf = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
+
 OD_CAL_FILE = "calibrations/od_cal.json"
 TEMP_CAL_FILE = "calibrations/temp_cal.json"
 
@@ -79,6 +80,7 @@ def socketServer():
                         msg = connection.recv(1024)
                         if msg:
                             commands = msg.split(b"\r\n")
+                            print("Commands: ", commands)
                             for data in commands:
                                 if data:
                                     # ==============================================================
@@ -164,6 +166,7 @@ def socketServer():
                                     # ==============================================================
                                     # getdevicename() -> dict
                                     elif data[0] == functions["getdevicename"]["id"]:
+                                        print("Get device name...")
                                         info = eServer.getdevicename()
                                         connection.sendall(
                                             bytes(json.dumps(info), "UTF-8") + b"\r\n"
