@@ -295,7 +295,9 @@ if __name__ == "__main__":
         ):  # and not running:
             try:
                 broadcast_data = eServer.broadcast(commands_in_queue)
-            except:
+
+            # TODO: handle exception properly
+            except Exception:
                 pass
 
             if current_time - last_time > conf["broadcast_timing"]:
