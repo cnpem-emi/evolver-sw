@@ -467,7 +467,7 @@ class evolverServer:
     def process_commands(self, parameters: dict):
         """
         Add all recurring commands and pre/post commands to the command queue
-        Immediate commands will have already been added to queue, so are ignored
+        Immediate commands will have already been added to queue, so are ignored.
         """
         for param, config in parameters.items():
             if config["monitor"]:
@@ -484,7 +484,7 @@ class evolverServer:
 
     def sub_command(self, command_list: list, parameters: dict):
         """
-        Append a list of commands to the command queue
+        Append a list of commands to the command queue.
         """
         for command in command_list:
             parameter = command["param"]

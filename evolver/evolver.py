@@ -77,7 +77,7 @@ def socketServer():
                 connection, client_address = _sock.accept()
                 try:
                     while True:
-                        msg = connection.recv(1024)
+                        msg = connection.recv(30000)
                         if msg:
                             commands = msg.split(b"\r\n")
                             print("Commands: ", commands)
@@ -131,8 +131,10 @@ def socketServer():
                                     elif (
                                         data[0] == functions["setrawcalibration"]["id"]
                                     ):
+                                        print("\n{}{}\n".format(data, type(data)))
                                         info = json.loads(data[1:])
                                         info = eServer.setrawcalibration(info)
+                                        print(info)
                                         connection.sendall(
                                             bytes(info, "UTF-8") + b"\r\n"
                                         )
@@ -219,7 +221,7 @@ def socketServer():
 
 def broadcastServer():
     """
-    Listen to a socket connection (dedicated port!) and send values once broadcast data/event is ready
+    Listen to a socket connection (dedicated port!) and send values once broadcast data/event is ready.
     """
     while True:
         try:
