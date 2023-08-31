@@ -12,7 +12,7 @@ experimental_params:
     monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
-    value: ['4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095']
+    value: ['0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0']
   temp:
     recurring: true
     monitor: true
@@ -24,7 +24,7 @@ experimental_params:
     monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
-    value: ['8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8']
+    value: ['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0']
   pump:
     recurring: false
     monitor: false

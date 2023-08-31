@@ -233,7 +233,6 @@ if __name__ == '__main__':
     running = False
     broadcast_event.clear()
 
-
     # NEW THREAD
     # Set up the hardware server - Serial communication with hardware
     eServer = evolverServer(conf)

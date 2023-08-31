@@ -36,6 +36,42 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)-15s [%(levelname)s] %
 logger = logging.getLogger()
 
 
+# --- Sorting vials per channel
+with open(CHANNEL_INDEX_PATH) as f:
+    channelIdx = json.load(f)
+
+def vial2channel(data:list):
+
+    if len(data) > 16:
+        indexes = [channelIdx[str(i)]["A"] for i in range(16)]
+        indexes += [channelIdx[str(i)]["B"] for i in range(16)]
+        indexes += [channelIdx[str(i)]["C"] for i in range(16)]
+        channel = [data[i] for i in indexes]
+    
+    elif len(data) < 16:
+        channel = data
+
+    else:
+        indexes = [channelIdx[str(i)]["channel"] for i in range(16)]
+        channel = [data[i] for i in indexes]
+
+    return channel
+
+
+def channel2vial(data:list):
+    if len(data) > 16:
+        vial = [data[channelIdx[str(i)]["A"]] for i in range(16)]
+        vial += [data[channelIdx[str(i)]["B"]] for i in range(16)]
+        vial += [data[channelIdx[str(i)]["C"]] for i in range(16)]
+
+    elif len(data) < 16:
+        vial = data
+    
+    else:
+        vial = [data[channelIdx[str(i)]["channel"]] for i in range(16)]
+    
+    return vial
+
 
 
 
@@ -60,9 +96,11 @@ class evolverServer:
         '''
         param = data.get('param', None)
         value = data.get('value', None)
+
         immediate = data.get('immediate', None)
         recurring = data.get('recurring', None)
         readonly = data.get('readonly', None)
+
         fields_expected_outgoing = data.get('fields_expected_outgoing', None)
         fields_expected_incoming = data.get('fields_expected_incoming', None)
 
@@ -255,7 +293,8 @@ class evolverServer:
                     for fit in calibration['fits']:
                         if fit['active']:
                             active_calibrations.append(calibration)
-                            break;
+                            break
+
             return(active_calibrations)
         except FileNotFoundError:
             self.print_calibration_file_error()
@@ -328,13 +367,17 @@ class evolverServer:
         # Check that parameters being sent to arduino match expected values
         if comm_type == RECURRING:
             output.append(self.evolver_conf[RECURRING])
+
         elif comm_type == IMMEDIATE:
             output.append(self.evolver_conf[IMMEDIATE])
+
         elif comm_type == READ_ONLY:
             output.append(self.evolver_conf[READ_ONLY])
 
         if type(value) is list:
+            value = vial2channel(value)
             output = output + list(map(str,value))
+
             for i,command_value in enumerate(output):
                     if command_value == 'NaN':
                         output[i] = self.evolver_conf['experimental_params'][param]['value'][i-1]
@@ -360,6 +403,7 @@ class evolverServer:
         response = serialResponseQueue.get(block=True)
         if type(response) == bytes:
             response = response.decode('UTF-8', errors='ignore')
+        print(param, " response: ", response, "\n")
         
 
         address = response[0:len(param)]
@@ -527,6 +571,7 @@ class serialPort:
                     request["event"].set()
 
                 time.sleep(0.5)
+
     def run(self):
         '''
         Run thread!
@@ -589,14 +634,14 @@ class redisClient:
 
                     else:
                         # Get calibrations !
-                        with open(CHANNEL_INDEX_PATH) as f:
-                            channelIdx = json.load(f)
                         with open(self.temp_cal_path) as f:
                             temp_cal = json.load(f)
+
                         with open(self.od_cal_path) as f:
                             od_cal = json.load(f)
-                            if od_cal['type'] == '3d':
-                                od_data_2 = data['data'].get(od_cal['params'][1], None)
+
+                            #if od_cal['type'] == '3d':
+                            #    od_data_2 = data['data'].get(od_cal['params'][1], None)
 
 
                         _data = _info.split(",")[1:17]
@@ -604,6 +649,7 @@ class redisClient:
                         # If echoing or immediate commands:
                         if ('e' in _param[-1]) or ('i' in _param[-1]):
                             for _ss in range(16):
+
                                 if "stir" in _param[:-1]:
                                     stir_percent = 100*(float(_data[_ss])/4095.0)
                                     self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
@@ -663,13 +709,16 @@ class redisClient:
                                                          od_coefficients[3]))
                                             if not np.isfinite(od_data):
                                                 od_data = 'NaN'
-                                        elif od_cal['type'] == '3d':
+
+                                            '''elif od_cal['type'] == '3d':
                                             od_data = np.real(od_coefficients[0] +
                                                                 (od_coefficients[1]*float(_data[_ss])) +
                                                                 (od_coefficients[2]*float(od_data_2[_ss])) +
                                                                 (od_coefficients[3]*(float(_data[_ss])**2)) +
                                                                 (od_coefficients[4]*float(_data[_ss])*float(od_data_2[_ss])) +
                                                                 (od_coefficients[5]*(float(od_data_2[_ss])**2)))
+                                            '''
+                                            
                                         else:
                                             logger.error('OD calibration not of supported type!')
                                             od_data = 'NaN'
