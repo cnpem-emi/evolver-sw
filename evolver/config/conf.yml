@@ -12,7 +12,7 @@ experimental_params:
     monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
-    value: ['0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0']
+    value: ['4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095','4095']
   temp:
     recurring: true
     monitor: true
@@ -24,7 +24,7 @@ experimental_params:
     monitor: false
     fields_expected_outgoing: 17
     fields_expected_incoming: 17
-    value: ['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0']
+    value: ['8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8', '8']
   pump:
     recurring: false
     monitor: false
@@ -38,7 +38,7 @@ num_sleeves: 16
 port: 8081
 
 # RPi file locations and names
-device: evolver-config.json
+device: config/evolver-config.json
 calibration: calibrations/calibration.json
 calibrations_directory: calibrations
 fitted_data_directory: fittedCal

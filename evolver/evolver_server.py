@@ -334,10 +334,10 @@ class evolverServer:
                     continue
 
                 returned_data = self.serial_communication(command["param"], command["value"], command["type"])
+                returned = channel2vial(returned)
 
                 if returned_data is not None:
                     data[command["param"]] = returned_data
-                    print("returned, ordered? ",returned_data)
 
             except (TypeError, ValueError, serial.serialutil.SerialException, EvolverSerialError) as e:
                 print_exc(file=sys.stdout)
@@ -471,7 +471,6 @@ class evolverServer:
 
         # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
         broadcast_data["data"] = self.run_commands()
-        print("broadcast ", broadcast_data)
         broadcast_data["config"] = self.evolver_conf["experimental_params"]
 
         if 1:  # commands_in_queue:
