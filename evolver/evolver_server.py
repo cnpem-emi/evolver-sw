@@ -630,8 +630,8 @@ class redisClient:
 
                         with open(self.od_cal_path) as f:
                             od_cal = json.load(f)
-                            #if od_cal["type"] == "3d":
-                            #    od_data_2 = data["data"].get(od_cal["params"][1], None)
+                            if od_cal["type"] == "3d":
+                                od_data_2 = _data["data"].get(od_cal["params"][1], None)
 
                         _data = _info.split(",")[1:17]
 
