@@ -639,59 +639,30 @@ class redisClient:
                             for _ss in range(16):
                                 if "stir" in _param[:-1]:
                                     stir_percent = 100 * (float(_data[_ss]) / 4095.0)
-                                    self.redis_client.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
 
                                 elif "pump" in _param[:-1]:
-                                    self.redis_client.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        _data[_ss],
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        _data[_ss],
-                                    )
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), _data[_ss])
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), _data[_ss])
 
                                 elif "od_led" in _param[:-1]:
                                     led_percent = 100 * (float(_data[_ss]) / 4095.0)
-                                    self.redis_client.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        led_percent,
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        led_percent,
-                                    )
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), led_percent)
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), led_percent)
 
                                 elif "temp" in _param[:-1]:
                                     temp_coefficients = temp_cal["coefficients"][_ss]
+
                                     try:
-                                        temp_value = (
-                                            float(_data[_ss]) * temp_coefficients[0]
-                                        ) + temp_coefficients[1]
-                                        self.redis_client.set(
-                                            "{}_set_ss_{}".format(_param[:-1], _ss),
-                                            temp_value,
-                                        )
-                                        self.redis_sirius.set(
-                                            "{}_set_ss_{}".format(_param[:-1], _ss),
-                                            temp_value,
-                                        )
+                                        temp_value = (float(_data[_ss]) * temp_coefficients[0]) + temp_coefficients[1]
+                                        self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), temp_value)
+                                        self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), temp_value)
                                     except:
                                         continue
 
-                            self.redis_client.set(
-                                "{}_set_timestamp".format(_param[:-1]), time.time()
-                            )
-                            self.redis_sirius.set(
-                                "{}_set_timestamp".format(_param[:-1]), time.time()
-                            )
+                            self.redis_client.set("{}_set_timestamp".format(_param[:-1]), time.time())
+                            self.redis_sirius.set("{}_set_timestamp".format(_param[:-1]), time.time())
 
                         # If broadcasting data:
                         elif "b" in _param[-1]:
@@ -701,29 +672,18 @@ class redisClient:
 
                                 if "stir" in _param[:-1]:
                                     stir_percent = float(_data[index]) / 4095.0
-                                    self.redis_client.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
 
                                 elif "temp" in _param[:-1]:
                                     temp_coefficients = temp_cal["coefficients"][_ss]
-                                    temp_value = (
-                                        float(_data[index]) * temp_coefficients[0]
-                                    ) + temp_coefficients[1]
-                                    self.redis_client.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss), temp_value
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss), temp_value
-                                    )
+                                    temp_value = (float(_data[index]) * temp_coefficients[0]) + temp_coefficients[1]
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
 
                                 elif "od_135" in _param[:-1]:
                                     od_coefficients = od_cal["coefficients"][_ss]
+                                    
                                     try:
                                         if od_cal["type"] == "sigmoid":
                                             # convert raw photodiode data into ODdata using calibration curve
