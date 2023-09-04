@@ -127,20 +127,33 @@ class evolverServer:
         return calibration_names
 
     def getfitnames(self) -> list:
-        """ """
+        """
+        Get a list of all fit names in the calibration file.
+        """
         fit_names = []
         print("Retrieving fit names...", flush=True)
         try:
             with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
                 calibrations = json.load(f)
+                
                 for calibration in calibrations:
                     for fit in calibration["fits"]:
-                        fit_names.append(
-                            {
-                                "name": fit["name"],
-                                "calibrationType": calibration["calibrationType"],
-                            }
+                        try:
+                            fit_names.append(
+                                {
+                                    "name": fit["name"],
+                                    "calibrationType": calibration["calibrationType"],
+                                }
+                            )
+
+                        except KeyError:
+                            fit_names.append(
+                                {
+                                    "name": fit["name"],
+                                    "calibrationType": calibration["calibrationtype"],
+                                }
                         )
+
             return fit_names
 
         except FileNotFoundError:
@@ -154,6 +167,22 @@ class evolverServer:
                 for calibration in calibrations:
                     if calibration["name"] == data["name"]:
                         return calibration
+
+        except FileNotFoundError:
+            self.print_calibration_file_error()
+
+    def appendcal(self, data: dict) -> str:
+        """ """
+        
+        try:
+            calibrations = []
+            with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
+                calibrations = json.load(f)
+                calibrations.append(data)
+            with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME), "w") as f:
+                json.dump(calibrations, f)
+
+            return "success"
 
         except FileNotFoundError:
             self.print_calibration_file_error()

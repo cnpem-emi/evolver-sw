@@ -208,6 +208,12 @@ def socketServer():
                                             info = json.loads(data[1:])
                                             eServer.sub_command(info, conf)
 
+                                    elif data[0] == functions["appendcal"]["id"]:
+                                        with lock:
+                                            print(data)
+                                            info = json.loads(data[1:])
+                                            response = eServer.appendcal(info)
+
                         else:
                             break
                 except Exception:
