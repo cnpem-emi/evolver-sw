@@ -21,11 +21,10 @@ CHANNEL_INDEX_PATH = "config/channel_index.json"
 
 # ---- QUEUES
 serialQueue = Queue()  # Items in queue: {"payload": bytes, "reply": boolean}
-redisQueue = (
-    Queue()
-)  #                  payload: bytes to be sent // reply: wait for a reply?
+redisQueue = (Queue())  # payload: bytes to be sent // reply: wait for a reply?
 broadcastQueue = Queue()
 serialResponseQueue = Queue()
+
 
 # ---- REDIS CLIENT
 REDIS_INCOMING_QUEUE = "incoming_queue"
@@ -41,6 +40,46 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 
+# ---- CHANNEL SORTING
+with open(CHANNEL_INDEX_PATH) as f:
+    channelIdx = json.load(f)
+
+def vial2channel(data:list):
+    '''
+    An input ordered from vials [0,1,2,...,15] is transformed to
+    channel ordered so the correct commands are sent to the arduino.
+    '''
+
+    if len(data) > 16:
+        channel = [data[channelIdx[str(i)]["A"]] for i in range(16)]
+        channel += [data[channelIdx[str(i)]["B"]] for i in range(16)]
+        channel += [data[channelIdx[str(i)]["C"]] for i in range(16)]
+    else:
+        channel = [data[channelIdx[str(i)]["channel"]] for i in range(16)]
+    
+    return channel
+
+def channel2vial(data:list):
+    '''
+    An input ordered from channels [0,1,2,...,15] is transformed to
+    channel ordered so the correct commands are sent to the arduino.
+    '''
+
+    if len(data) > 16:
+        indexes = [channelIdx[str(i)]["A"] for i in range(16)]
+        indexes += [channelIdx[str(i)]["B"] for i in range(16)]
+        indexes += [channelIdx[str(i)]["C"] for i in range(16)]
+        vial = [data[indexes.index(i)] for i in range(48)]
+
+    else:
+        indexes = [channelIdx[str(i)]["channel"] for i in range(16)]
+        vial = [data[indexes.index(i)] for i in range(16)]
+
+    return vial
+
+
+# ---- eVOLVER Server Classes
+
 class EvolverSerialError(Exception):
     pass
 
@@ -55,23 +94,20 @@ class evolverServer:
         """ """
         param = data.get("param", None)
         value = data.get("value", None)
+
         immediate = data.get("immediate", None)
         recurring = data.get("recurring", None)
         readonly = data.get("readonly", None)
+
         fields_expected_outgoing = data.get("fields_expected_outgoing", None)
         fields_expected_incoming = data.get("fields_expected_incoming", None)
 
         # Update the configuration for the param
         if value is not None:
-            if (
-                type(value) is list
-                and self.evolver_conf["experimental_params"][param]["value"] is not None
-            ):
+            if (type(value) is list and self.evolver_conf["experimental_params"][param]["value"] is not None):
                 for i, v in enumerate(value):
                     if v != "NaN":
-                        self.evolver_conf["experimental_params"][param]["value"][
-                            i
-                        ] = value[i]
+                        self.evolver_conf["experimental_params"][param]["value"][i] = value[i]
             else:
                 self.evolver_conf["experimental_params"][param]["value"] = value
 
@@ -79,14 +115,10 @@ class evolverServer:
             self.evolver_conf["experimental_params"][param]["recurring"] = recurring
 
         if fields_expected_outgoing is not None:
-            self.evolver_conf["experimental_params"][param][
-                "fields_expected_outgoing"
-            ] = fields_expected_outgoing
+            self.evolver_conf["experimental_params"][param]["fields_expected_outgoing"] = fields_expected_outgoing
 
         if fields_expected_incoming is not None:
-            self.evolver_conf["experimental_params"][param][
-                "fields_expected_incoming"
-            ] = fields_expected_incoming
+            self.evolver_conf["experimental_params"][param]["fields_expected_incoming"] = fields_expected_incoming
 
         # Save to config the values sent in for the parameter
         #        with open(os.path.realpath(os.path.join(os.getcwd(),os.path.dirname(__file__), evolver.CONF_FILENAME)), 'w') as ymlfile:
@@ -94,10 +126,11 @@ class evolverServer:
 
         if immediate:
             self.clear_broadcast(param)
-            self.command_queue.put({"param": param, "value": value, "type": IMMEDIATE})
+            self.command_queue.put({"param": param, "value": vial2channel(value), "type": IMMEDIATE})
+
         elif readonly:
             self.clear_broadcast(param)
-            self.command_queue.put({"param": param, "value": value, "type": READ_ONLY})
+            self.command_queue.put({"param": param, "value": vial2channel(value), "type": READ_ONLY})
 
         return data
 
@@ -314,90 +347,70 @@ class evolverServer:
     def clear_broadcast(self, param=None):
         """Removes broadcast commands of a specific param from queue"""
         for command in self.command_queue.queue:
-            if (command["param"] == param or param is None) and command[
-                "type"
-            ] == RECURRING:
+            if (command["param"] == param or param is None) and command["type"] == RECURRING:
                 self.command_queue.queue.remove(command)
                 break
 
     def run_commands(self) -> dict:
         """ """
         data = {}
+
         while self.command_queue.qsize() > 0:
             command = self.command_queue.get()
             try:
                 if command["param"] == "wait":
                     time.sleep(command["value"])
                     continue
-                returned_data = self.serial_communication(
-                    command["param"], command["value"], command["type"]
-                )
+
+                returned_data = self.serial_communication(command["param"], command["value"], command["type"])
+                returned = channel2vial(returned)
+
                 if returned_data is not None:
                     data[command["param"]] = returned_data
-            except (
-                TypeError,
-                ValueError,
-                serial.serialutil.SerialException,
-                EvolverSerialError,
-            ) as e:
+
+            except (TypeError, ValueError, serial.serialutil.SerialException, EvolverSerialError) as e:
                 print_exc(file=sys.stdout)
+
         return data
 
     def serial_communication(self, param: str, value: list, comm_type: str) -> list:
         """ """
 
         output = []
+        #value = vial2channel(value)
 
         # Check that parameters being sent to arduino match expected values
         if comm_type == RECURRING:
             output.append(self.evolver_conf[RECURRING])
+
         elif comm_type == IMMEDIATE:
             output.append(self.evolver_conf[IMMEDIATE])
+
         elif comm_type == READ_ONLY:
             output.append(self.evolver_conf[READ_ONLY])
 
         if type(value) is list:
             output = output + list(map(str, value))
+
             for i, command_value in enumerate(output):
                 if command_value == "NaN":
-                    output[i] = self.evolver_conf["experimental_params"][param][
-                        "value"
-                    ][i - 1]
+                    output[i] = self.evolver_conf["experimental_params"][param]["value"][i - 1]
         else:
             output.append(value)
 
-        fields_expected_outgoing = self.evolver_conf["experimental_params"][param][
-            "fields_expected_outgoing"
-        ]
-        fields_expected_incoming = self.evolver_conf["experimental_params"][param][
-            "fields_expected_incoming"
-        ]
+        fields_expected_outgoing = self.evolver_conf["experimental_params"][param]["fields_expected_outgoing"]
+        fields_expected_incoming = self.evolver_conf["experimental_params"][param]["fields_expected_incoming"]
 
         if len(output) is not fields_expected_outgoing:
-            raise EvolverSerialError(
-                "Error: Number of fields outgoing for "
-                + param
-                + " different from expected\n\tExpected: "
-                + str(fields_expected_outgoing)
-                + "\n\tFound: "
-                + str(len(output))
-            )
+            raise EvolverSerialError("Error: Number of fields outgoing for {} different from expected\n\tExpected: {}\n\tFound: ".format(param, str(fields_expected_outgoing), str(len(output))))
 
         # Construct the actual string and write out on the serial buffer
         print("Updating param ", param)
-        serial_output = (
-            param + ",".join(output) + "," + self.evolver_conf["serial_end_outgoing"]
-        )
+        serial_output = (param + ",".join(output) + "," + self.evolver_conf["serial_end_outgoing"])
         serial_output = serial_output.replace("nan", "--")
 
         serialEvent = Event()
-        serialQueue.put(
-            {
-                "event": serialEvent,
-                "payload": bytes(serial_output, "UTF-8"),
-                "reply": True,
-            }
-        )
+        serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, "UTF-8"), "reply": True,})
         serialEvent.wait()
 
         # Read and process the response
@@ -407,76 +420,30 @@ class evolverServer:
 
         address = response[0 : len(param)]
         if address != param:
-            raise EvolverSerialError(
-                "Error: Response has incorrect address.\n\tExpected: "
-                + param
-                + "\n\tFound:"
-                + address
-            )
-        if response.find(self.evolver_conf["serial_end_incoming"]) != len(
-            response
-        ) - len(self.evolver_conf["serial_end_incoming"]):
-            raise EvolverSerialError(
-                "Error: Response did not have valid serial communication termination string!\n\tExpected: "
-                + self.evolver_conf["serial_end_incoming"]
-                + "\n\tFound: "
-                + response[len(response) - 3 :]
-            )
+            raise EvolverSerialError("Error: Response has incorrect address.\n\tExpected: {}\n\tFound: {}".format(param, address))
+        
+        if response.find(self.evolver_conf["serial_end_incoming"]) != len(response) - len(self.evolver_conf["serial_end_incoming"]):
+            raise EvolverSerialError("Error: Response did not have valid serial communication termination string!\n\tExpected: {}\n\tFound: {}".format(self.evolver_conf["serial_end_incoming"],response[len(response)-3 :]))
 
         # Remove the address and ending from the response string and convert to a list
-        returned_data = response[
-            len(param) : len(response)
-            - len(self.evolver_conf["serial_end_incoming"])
-            - 1
-        ].split(",")
+        returned_data = response[len(param) : len(response) - len(self.evolver_conf["serial_end_incoming"]) - 1].split(",")
 
         if len(returned_data) != fields_expected_incoming:
-            raise EvolverSerialError(
-                "Error: Number of fields received for "
-                + param
-                + " different from expected\n\tExpected: "
-                + str(fields_expected_incoming)
-                + "\n\tFound: "
-                + str(len(returned_data))
-            )
+            raise EvolverSerialError("Error: Number of fields received for {} different from expected\n\tExpected: {}\n\tFound: {}".format(param, str(fields_expected_incoming), str(len(returned_data))))
 
-        if (
-            returned_data[0] == self.evolver_conf["echo_response_char"]
-            and output[1:] != returned_data[1:]
-        ):
-            raise EvolverSerialError(
-                "Error: Value returned by echo different from values sent.\n\tExpected: {}\n\tFound: {}".format(
-                    str(output[1:]), str(value)
-                )
-            )
-        elif (
-            returned_data[0] != self.evolver_conf["data_response_char"]
-            and returned_data[0] != self.evolver_conf["echo_response_char"]
-        ):
-            raise EvolverSerialError(
-                "Error: Incorect response character.\n\tExpected: {}\n\tFound: {}".format(
-                    self.evolver_conf["data_response_char"], returned_data[0]
-                )
-            )
+        if (returned_data[0] == self.evolver_conf["echo_response_char"] and output[1:] != returned_data[1:]):
+            raise EvolverSerialError("Error: Value returned by echo different from values sent.\n\tExpected: {}\n\tFound: {}".format(str(output[1:]), str(value)))
+        
+        elif (returned_data[0] != self.evolver_conf["data_response_char"] and returned_data[0] != self.evolver_conf["echo_response_char"]):
+            raise EvolverSerialError("Error: Incorect response character.\n\tExpected: {}\n\tFound: {}".format(self.evolver_conf["data_response_char"], returned_data[0]))
 
         # ACKNOWLEDGE - lets arduino know it's ok to run any commands (super important!)
         serial_output = [""] * fields_expected_outgoing
         serial_output[0] = self.evolver_conf["acknowledge_char"]
-        serial_output = (
-            param
-            + ",".join(serial_output)
-            + ","
-            + self.evolver_conf["serial_end_outgoing"]
-        )
+        serial_output = (param + ",".join(serial_output) + "," + self.evolver_conf["serial_end_outgoing"])
 
         serialEvent = Event()
-        serialQueue.put(
-            {
-                "event": serialEvent,
-                "payload": bytes(serial_output, "UTF-8"),
-                "reply": False,
-            }
-        )
+        serialQueue.put({"event": serialEvent, "payload": bytes(serial_output, "UTF-8"), "reply": False})
         serialEvent.wait()
 
         # This is necessary to allow the ack to be fully written out to samd21 and for them to fully read
@@ -504,9 +471,7 @@ class evolverServer:
                     self.sub_command(config["pre"], parameters)
 
                 # Main command
-                self.command_queue.put(
-                    {"param": param, "value": config["value"], "type": READ_ONLY}
-                )
+                self.command_queue.put({"param": param, "value": vial2channel(config["value"]), "type": READ_ONLY})
 
                 if "post" in config:  # run this command after the main command
                     self.sub_command(config["post"], parameters)
@@ -519,9 +484,11 @@ class evolverServer:
             parameter = command["param"]
             value = command["value"]
             type = command["type"]
+
             if value == "values":
                 value = parameters[parameter]["value"]
-            self.command_queue.put({"param": parameter, "value": value, "type": type})
+
+            self.command_queue.put({"param": parameter, "value": vial2channel(value), "type": type})
 
     def broadcast(self, commands_in_queue: bool) -> dict:
         broadcast_data = {}
@@ -590,6 +557,7 @@ class serialPort:
 
                 if request["reply"]:
                     reply = self.read()
+
                     if not reply:
                         time.sleep(2)
                         self.write(request["payload"])
@@ -599,16 +567,19 @@ class serialPort:
 
                     if request_source == "serial":
                         serialResponseQueue.put(reply)
+
                     elif request_source == "redis":
                         redisQueue.put(reply)
 
                     # Echo reply for broadcast queue, in order to mirror values to Redis database
                     broadcastQueue.put(reply)
+
                     # Temperature has no echo when sending a setpoint, so:
-                    if request["payload"][:5] == b"tempi":
-                        broadcastQueue.put(request["payload"])
+                    #if request["payload"][:5] == b"tempi":
+                    #    broadcastQueue.put(request["payload"])
 
                 time.sleep(self.sleepTime)
+
                 if "event" in request.keys():
                     request["event"].set()
 
@@ -635,9 +606,9 @@ class redisClient:
             config["redis_server_port"],
             config["redis_server_passwd"],
         )
-        self.redis_sirius = redis.StrictRedis(
-            "127.0.0.1"
-        )  # "10.0.38.46") # Mapping Redis @Sirius for RedisIOC/Archiving WHEN AUTHORIZED! (evolver is not a Sirius application)
+
+        self.redis_sirius = redis.StrictRedis("127.0.0.1")  # "10.0.38.46") # Mapping Redis @Sirius for RedisIOC/Archiving WHEN AUTHORIZED! (evolver is not a Sirius application)
+
         self.od_cal_path = od_cal_path
         self.temp_cal_path = temp_cal_path
 
@@ -651,9 +622,8 @@ class redisClient:
                 while True:
                     # wait until there is a command in the list
                     # command = {"payload": bytes, "reply": boolean}
-                    command = json.loads(
-                        self.redis_client.brpop(REDIS_INCOMING_QUEUE)[1]
-                    )
+                    # IF USED, MUST CONVERT COMMAND TO CORRECT CHANNELS
+                    command = json.loads(self.redis_client.brpop(REDIS_INCOMING_QUEUE)[1])
                     redisQueue.put(command)
                     time.sleep(5)
 
@@ -671,9 +641,7 @@ class redisClient:
             try:
                 while True:
                     # wait until there is a command in the list
-                    _info = broadcastQueue.get(
-                        block=True
-                    )  # .decode('UTF-8', errors='ignore')
+                    _info = broadcastQueue.get(block=True)  # .decode('UTF-8', errors='ignore')
 
                     if type(_info) == bytes:
                         _info = _info.decode("UTF-8", errors="ignore")
@@ -685,14 +653,13 @@ class redisClient:
 
                     else:
                         # Get calibrations !
-                        with open(CHANNEL_INDEX_PATH) as f:
-                            channelIdx = json.load(f)
                         with open(self.temp_cal_path) as f:
                             temp_cal = json.load(f)
+
                         with open(self.od_cal_path) as f:
                             od_cal = json.load(f)
                             if od_cal["type"] == "3d":
-                                od_data_2 = data["data"].get(od_cal["params"][1], None)
+                                od_data_2 = _data["data"].get(od_cal["params"][1], None)
 
                         _data = _info.split(",")[1:17]
 
@@ -701,59 +668,30 @@ class redisClient:
                             for _ss in range(16):
                                 if "stir" in _param[:-1]:
                                     stir_percent = 100 * (float(_data[_ss]) / 4095.0)
-                                    self.redis_client.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), stir_percent)
 
                                 elif "pump" in _param[:-1]:
-                                    self.redis_client.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        _data[_ss],
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        _data[_ss],
-                                    )
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), _data[_ss])
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), _data[_ss])
 
                                 elif "od_led" in _param[:-1]:
                                     led_percent = 100 * (float(_data[_ss]) / 4095.0)
-                                    self.redis_client.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        led_percent,
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_set_ss_{}".format(_param[:-1], _ss),
-                                        led_percent,
-                                    )
+                                    self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), led_percent)
+                                    self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), led_percent)
 
                                 elif "temp" in _param[:-1]:
                                     temp_coefficients = temp_cal["coefficients"][_ss]
+
                                     try:
-                                        temp_value = (
-                                            float(_data[_ss]) * temp_coefficients[0]
-                                        ) + temp_coefficients[1]
-                                        self.redis_client.set(
-                                            "{}_set_ss_{}".format(_param[:-1], _ss),
-                                            temp_value,
-                                        )
-                                        self.redis_sirius.set(
-                                            "{}_set_ss_{}".format(_param[:-1], _ss),
-                                            temp_value,
-                                        )
+                                        temp_value = (float(_data[_ss]) * temp_coefficients[0]) + temp_coefficients[1]
+                                        self.redis_client.set("{}_set_ss_{}".format(_param[:-1], _ss), temp_value)
+                                        self.redis_sirius.set("{}_set_ss_{}".format(_param[:-1], _ss), temp_value)
                                     except:
                                         continue
 
-                            self.redis_client.set(
-                                "{}_set_timestamp".format(_param[:-1]), time.time()
-                            )
-                            self.redis_sirius.set(
-                                "{}_set_timestamp".format(_param[:-1]), time.time()
-                            )
+                            self.redis_client.set("{}_set_timestamp".format(_param[:-1]), time.time())
+                            self.redis_sirius.set("{}_set_timestamp".format(_param[:-1]), time.time())
 
                         # If broadcasting data:
                         elif "b" in _param[-1]:
@@ -763,29 +701,18 @@ class redisClient:
 
                                 if "stir" in _param[:-1]:
                                     stir_percent = float(_data[index]) / 4095.0
-                                    self.redis_client.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss),
-                                        stir_percent,
-                                    )
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), stir_percent)
 
                                 elif "temp" in _param[:-1]:
                                     temp_coefficients = temp_cal["coefficients"][_ss]
-                                    temp_value = (
-                                        float(_data[index]) * temp_coefficients[0]
-                                    ) + temp_coefficients[1]
-                                    self.redis_client.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss), temp_value
-                                    )
-                                    self.redis_sirius.set(
-                                        "{}_ss_{}".format(_param[:-1], _ss), temp_value
-                                    )
+                                    temp_value = (float(_data[index]) * temp_coefficients[0]) + temp_coefficients[1]
+                                    self.redis_client.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
+                                    self.redis_sirius.set("{}_ss_{}".format(_param[:-1], _ss), temp_value)
 
                                 elif "od_135" in _param[:-1]:
                                     od_coefficients = od_cal["coefficients"][_ss]
+                                    
                                     try:
                                         if od_cal["type"] == "sigmoid":
                                             # convert raw photodiode data into ODdata using calibration curve

@@ -38,7 +38,7 @@ num_sleeves: 16
 port: 8081
 
 # RPi file locations and names
-device: evolver-config.json
+device: config/evolver-config.json
 calibration: calibrations/calibration.json
 calibrations_directory: calibrations
 fitted_data_directory: fittedCal
