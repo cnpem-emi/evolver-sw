@@ -204,6 +204,16 @@ class evolverServer:
         except FileNotFoundError:
             self.print_calibration_file_error()
 
+    def get_all_calibrations(self) -> list:
+        """ """
+        try:
+            with open(os.path.join(LOCATION, CALIBRATIONS_FILENAME)) as f:
+                calibrations = json.load(f)
+                return calibrations
+
+        except FileNotFoundError:
+            self.print_calibration_file_error()
+
     def appendcal(self, data: dict) -> str:
         """ """
         

@@ -213,6 +213,14 @@ def socketServer():
                                             print(data)
                                             info = json.loads(data[1:])
                                             response = eServer.appendcal(info)
+                                    
+                                    elif data[0] == functions["getallcalibrations"]["id"]:
+                                        with lock:
+                                            info = eServer.get_all_calibrations()
+                                            connection.sendall(
+                                                bytes(json.dumps(info), "UTF-8")
+                                                + b"\r\n"
+                                            )
 
                         else:
                             break
