@@ -44,27 +44,35 @@ logger = logging.getLogger()
 with open(CHANNEL_INDEX_PATH) as f:
     channelIdx = json.load(f)
 
-def vial2channel(data:list):
+def channel2vial(data:list):
     '''
     An input ordered from vials [0,1,2,...,15] is transformed to
     channel ordered so the correct commands are sent to the arduino.
     '''
-
+    
+    if type(data) != list:
+        return data
+    
     if len(data) > 16:
         channel = [data[channelIdx[str(i)]["A"]] for i in range(16)]
         channel += [data[channelIdx[str(i)]["B"]] for i in range(16)]
         channel += [data[channelIdx[str(i)]["C"]] for i in range(16)]
+
     else:
         channel = [data[channelIdx[str(i)]["channel"]] for i in range(16)]
     
     return channel
 
-def channel2vial(data:list):
+
+def vial2channel(data:list):
     '''
     An input ordered from channels [0,1,2,...,15] is transformed to
     channel ordered so the correct commands are sent to the arduino.
     '''
 
+    if type(data) != list:
+        return data
+    
     if len(data) > 16:
         indexes = [channelIdx[str(i)]["A"] for i in range(16)]
         indexes += [channelIdx[str(i)]["B"] for i in range(16)]
@@ -367,13 +375,13 @@ class evolverServer:
 
         while self.command_queue.qsize() > 0:
             command = self.command_queue.get()
+           
             try:
                 if command["param"] == "wait":
                     time.sleep(command["value"])
                     continue
-
+                
                 returned_data = self.serial_communication(command["param"], command["value"], command["type"])
-                returned = channel2vial(returned)
 
                 if returned_data is not None:
                     data[command["param"]] = returned_data
@@ -387,7 +395,6 @@ class evolverServer:
         """ """
 
         output = []
-        #value = vial2channel(value)
 
         # Check that parameters being sent to arduino match expected values
         if comm_type == RECURRING:
@@ -460,10 +467,13 @@ class evolverServer:
         time.sleep(self.evolver_conf["serial_delay"])
 
         if returned_data[0] == self.evolver_conf["data_response_char"]:
-            returned_data = returned_data[1:]
+            #print("RESPONSE: \n\t", output[1:], "\n\t", returned_data[1:], "\n\t", channel2vial(returned_data[1:]))
+            returned_data = channel2vial(returned_data[1:])
         else:
+            #print("RESPONSE: \n\t", output[1:], "\n\t", returned_data[1:], "\n\t", channel2vial(returned_data[1:]))
             returned_data = None
 
+        
         return returned_data
 
     def get_num_commands(self) -> int:
@@ -476,11 +486,13 @@ class evolverServer:
         Immediate commands will have already been added to queue, so are ignored.
         """
         for param, config in parameters.items():
+            #print(param, config)
             if config["monitor"]:
                 if "pre" in config:  # run this command prior to the main command
                     self.sub_command(config["pre"], parameters)
 
                 # Main command
+
                 self.command_queue.put({"param": param, "value": vial2channel(config["value"]), "type": READ_ONLY})
 
                 if "post" in config:  # run this command after the main command
@@ -510,6 +522,7 @@ class evolverServer:
 
         # Always run commands so that IMMEDIATE requests occur. RECURRING requests only happen if no commands in queue
         broadcast_data["data"] = self.run_commands()
+        #print("BROADCAST ", broadcast_data["data"])
         broadcast_data["config"] = self.evolver_conf["experimental_params"]
 
         if 1:  # commands_in_queue:
@@ -671,7 +684,7 @@ class redisClient:
                             if od_cal["type"] == "3d":
                                 od_data_2 = _data["data"].get(od_cal["params"][1], None)
 
-                        _data = _info.split(",")[1:17]
+                        _data = channel2vial(_info.split(",")[1:17])
 
                         # If echoing or immediate commands:
                         if ("e" in _param[-1]) or ("i" in _param[-1]):
@@ -707,7 +720,7 @@ class redisClient:
                         elif "b" in _param[-1]:
                             for _ss in range(16):
                                 # Here, index maps smart sleeves vs vector channel index
-                                index = channelIdx[str(_ss)]["channel"]
+                                index = _ss #channelIdx[str(_ss)]["channel"]
 
                                 if "stir" in _param[:-1]:
                                     stir_percent = float(_data[index]) / 4095.0
@@ -781,7 +794,7 @@ class redisClient:
                                         print("OD Read Error")
                                         logger.error(
                                             "OD read error for vial %d, setting to NaN"
-                                            % x
+                                            % _ss
                                         )
                                         od_data = "NaN"
 

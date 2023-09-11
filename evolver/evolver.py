@@ -80,7 +80,7 @@ def socketServer():
                         msg = connection.recv(30000)
                         if msg:
                             commands = msg.split(b"\r\n")
-                            print("Commands: ", commands)
+                            #print("Commands: ", commands)
                             for data in commands:
                                 if data:
                                     # ==============================================================
@@ -306,9 +306,7 @@ if __name__ == "__main__":
         current_time = time.time()
         commands_in_queue = eServer.get_num_commands() > 0
 
-        if (
-            current_time - last_time > conf["broadcast_timing"] or commands_in_queue
-        ):  # and not running:
+        if (current_time - last_time > conf["broadcast_timing"] or commands_in_queue):  # and not running:
             try:
                 broadcast_data = eServer.broadcast(commands_in_queue)
 
