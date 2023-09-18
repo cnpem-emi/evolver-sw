@@ -114,10 +114,13 @@ class evolverServer:
         if value is not None:
             if (type(value) is list and self.evolver_conf["experimental_params"][param]["value"] is not None):
                 for i, v in enumerate(value):
-                    if v != "NaN":
-                        self.evolver_conf["experimental_params"][param]["value"][i] = value[i]
+                    if v != "nan":
+                        self.evolver_conf["experimental_params"][param]["value"][i] = int(value[i])
             else:
                 self.evolver_conf["experimental_params"][param]["value"] = value
+
+        #print("COMMAND ", value)
+        #print("CONF ", self.evolver_conf["experimental_params"][param]["value"])
 
         if recurring is not None:
             self.evolver_conf["experimental_params"][param]["recurring"] = recurring
@@ -134,11 +137,11 @@ class evolverServer:
 
         if immediate:
             self.clear_broadcast(param)
-            self.command_queue.put({"param": param, "value": vial2channel(value), "type": IMMEDIATE})
+            self.command_queue.put({"param": param, "value": vial2channel(self.evolver_conf["experimental_params"][param]["value"]), "type": IMMEDIATE})
 
         elif readonly:
             self.clear_broadcast(param)
-            self.command_queue.put({"param": param, "value": vial2channel(value), "type": READ_ONLY})
+            self.command_queue.put({"param": param, "value": vial2channel(self.evolver_conf["experimental_params"][param]["value"]), "type": READ_ONLY})
 
         return data
 
@@ -422,7 +425,7 @@ class evolverServer:
             raise EvolverSerialError("Error: Number of fields outgoing for {} different from expected\n\tExpected: {}\n\tFound: ".format(param, str(fields_expected_outgoing), str(len(output))))
 
         # Construct the actual string and write out on the serial buffer
-        print("Updating param ", param)
+        print("Updating param ", param, " ", output)
         serial_output = (param + ",".join(output) + "," + self.evolver_conf["serial_end_outgoing"])
         serial_output = serial_output.replace("nan", "--")
 
@@ -444,7 +447,7 @@ class evolverServer:
 
         # Remove the address and ending from the response string and convert to a list
         returned_data = response[len(param) : len(response) - len(self.evolver_conf["serial_end_incoming"]) - 1].split(",")
-
+        
         if len(returned_data) != fields_expected_incoming:
             raise EvolverSerialError("Error: Number of fields received for {} different from expected\n\tExpected: {}\n\tFound: {}".format(param, str(fields_expected_incoming), str(len(returned_data))))
 
