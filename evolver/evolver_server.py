@@ -115,12 +115,9 @@ class evolverServer:
             if (type(value) is list and self.evolver_conf["experimental_params"][param]["value"] is not None):
                 for i, v in enumerate(value):
                     if v != "nan":
-                        self.evolver_conf["experimental_params"][param]["value"][i] = int(value[i])
+                        self.evolver_conf["experimental_params"][param]["value"][i] = value[i]
             else:
                 self.evolver_conf["experimental_params"][param]["value"] = value
-
-        #print("COMMAND ", value)
-        #print("CONF ", self.evolver_conf["experimental_params"][param]["value"])
 
         if recurring is not None:
             self.evolver_conf["experimental_params"][param]["recurring"] = recurring
@@ -826,3 +823,6 @@ class redisClient:
         _t2 = Thread(target=self.broadcastRedisThread)
         _t1.start()
         _t2.start()
+
+
+#r.write_and_read("socketio", {"payload":{'param': 'pump', 'value': [0, '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--', '--'], 'immediate': True}, "command":"command"})
