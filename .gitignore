@@ -1,5 +1,6 @@
 # Configuration files
 calibrations.json
+evolver/calibrations/calibrations.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
